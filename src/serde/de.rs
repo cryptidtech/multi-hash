@@ -14,7 +14,7 @@ impl<'de> Deserialize<'de> for Multihash {
     where
         D: Deserializer<'de>,
     {
-        const FIELDS: &'static [&'static str] = &["codec", "hash"];
+        const FIELDS: &[&str] = &["codec", "hash"];
 
         #[derive(Deserialize)]
         #[serde(field_identifier, rename_all = "lowercase")]

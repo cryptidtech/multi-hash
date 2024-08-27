@@ -1,5 +1,5 @@
 // SPDX-License-Idnetifier: Apache-2.0
-//!
+//! multihash
 #![warn(missing_docs)]
 #![deny(
     trivial_casts,

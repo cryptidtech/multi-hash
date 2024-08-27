@@ -83,13 +83,13 @@ impl EncodingInfo for Multihash {
     }
 }
 
-impl Into<Vec<u8>> for Multihash {
-    fn into(self) -> Vec<u8> {
+impl From<Multihash> for Vec<u8> {
+    fn from(mh: Multihash) -> Vec<u8> {
         let mut v = Vec::default();
         // add in the hash codec
-        v.append(&mut self.codec.clone().into());
+        v.append(&mut mh.codec.into());
         // add in the hash data
-        v.append(&mut Varbytes(self.hash.clone()).into());
+        v.append(&mut Varbytes(mh.hash).into());
         v
     }
 }
@@ -219,7 +219,7 @@ impl Builder {
     pub fn try_build_encoded(&self) -> Result<EncodedMultihash, Error> {
         Ok(BaseEncoded::new(
             self.base_encoding
-                .unwrap_or_else(|| Multihash::preferred_encoding()),
+                .unwrap_or_else(Multihash::preferred_encoding),
             self.try_build()?,
         ))
     }
@@ -228,7 +228,7 @@ impl Builder {
     pub fn try_build(&self) -> Result<Multihash, Error> {
         Ok(Multihash {
             codec: self.codec,
-            hash: self.hash.clone().ok_or_else(|| Error::MissingHash)?,
+            hash: self.hash.clone().ok_or(Error::MissingHash)?,
         })
     }
 }
