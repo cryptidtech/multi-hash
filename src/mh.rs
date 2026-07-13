@@ -5,12 +5,12 @@
 //! self-describing hash digests.
 
 use crate::Error;
+use core::fmt;
+use digest::{Digest, DynDigest, InvalidBufferSize};
 use multi_base::Base;
 use multi_codec::Codec;
 use multi_trait::{Null, TryDecodeFrom};
 use multi_util::{BaseEncoded, CodecInfo, DetectedEncoder, EncodingInfo, Varbytes};
-use core::fmt;
-use digest::{Digest, DynDigest, InvalidBufferSize};
 use typenum::consts::*;
 
 /// the hash codecs currently supported

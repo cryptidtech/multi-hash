@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Performance benchmarks for multi-hash
 
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use multi_codec::Codec;
 use multi_hash::{Builder, Multihash};
 use multi_trait::TryDecodeFrom;
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::hint::black_box;
 
 /// Benchmark hash computation for various algorithms

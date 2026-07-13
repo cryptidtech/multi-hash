@@ -207,10 +207,7 @@ impl Error {
     /// let err = Error::hash_compute_failed(Codec::Sha2256, "internal error");
     /// assert!(matches!(err, Error::HashComputeFailed { .. }));
     /// ```
-    pub fn hash_compute_failed(
-        algorithm: multi_codec::Codec,
-        message: impl Into<String>,
-    ) -> Self {
+    pub fn hash_compute_failed(algorithm: multi_codec::Codec, message: impl Into<String>) -> Self {
         Self::HashComputeFailed {
             algorithm,
             message: message.into(),

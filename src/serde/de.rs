@@ -1,8 +1,8 @@
 // SPDX-License-Idnetifier: Apache-2.0
 use crate::{mh::SIGIL, Multihash};
+use core::fmt;
 use multi_codec::Codec;
 use multi_util::EncodedVarbytes;
-use core::fmt;
 use serde::{
     de::{Error, MapAccess, Visitor},
     Deserialize, Deserializer,

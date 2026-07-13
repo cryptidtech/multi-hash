@@ -4,8 +4,8 @@
 //! This module provides newtype wrappers that prevent mixing up hash digests
 //! with other byte arrays and provide type-safe abstractions.
 
-use multi_codec::Codec;
 use core::fmt;
+use multi_codec::Codec;
 
 /// A cryptographic hash digest
 ///
