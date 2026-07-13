@@ -1,6 +1,6 @@
 [package]
 name = "multi-hash"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 authors = ["Dave Grantham <dwg@linuxprogrammer.org>"]
 description = "Multihash self-describing cryptographic hash data"
@@ -16,10 +16,10 @@ default = ["serde"]
 [dependencies]
 blake2 = "0.10"
 blake3 = { version = "1.5.1", features = ["traits-preview", "zeroize"] }
-multi-base = { version = "1.0", path = "../multi-base" }
-multi-codec = { version = "1.0", path = "../multi-codec" }
-multi-trait = { version = "1.0", path = "../multi-trait" }
-multi-util = { version = "1.0", path = "../multi-util" }
+multi-base = "1.0"
+multi-codec = "1.0"
+multi-trait = "1.0"
+multi-util = "1.0"
 digest = "0.10"
 hex = "0.4"
 md-5 = "0.10"
