@@ -1,6 +1,6 @@
 // SPDX-License-Idnetifier: Apache-2.0
 use crate::mh::{Multihash, SIGIL};
-use multiutil::{EncodingInfo, Varbytes};
+use multi_util::{EncodingInfo, Varbytes};
 use serde::ser::{self, SerializeStruct};
 
 /// Serialize instance of [`crate::Multihash`]
