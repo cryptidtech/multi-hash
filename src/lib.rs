@@ -21,13 +21,13 @@
 //! ## Supported Algorithms
 //!
 //! **Secure algorithms** (recommended for cryptographic use):
-//! - Blake2b (256, 384, 512 bits)
-//! - Blake2s (256 bits)
+//! - Blake2b (224, 256, 384, 512 bits)
+//! - Blake2s (224, 256 bits)
 //! - Blake3
-//! - SHA3 (256, 384, 512 bits)
+//! - SHA3 (224, 256, 384, 512 bits)
 //!
 //! **Legacy algorithms** (for compatibility):
-//! - SHA1, SHA2 (224, 256, 384, 512 bits)
+//! - SHA1, SHA2 (224, 256, 384, 512, 512/224, 512/256 bits)
 //! - MD5, RIPEMD (128, 160, 256, 320 bits)
 //!
 //! See [`HASH_CODECS`] for the complete list and [`SAFE_HASH_CODECS`] for recommended algorithms.
