@@ -188,6 +188,7 @@
 
 #![warn(missing_docs)]
 #![deny(
+    unsafe_code,
     trivial_casts,
     trivial_numeric_casts,
     unused_import_braces,
@@ -200,7 +201,7 @@ pub use error::Error;
 
 /// Multihash type and functions
 pub mod mh;
-pub use mh::{Builder, EncodedMultihash, Multihash, HASH_CODECS, SAFE_HASH_CODECS};
+pub use mh::{Builder, EncodedMultihash, HASH_CODECS, Multihash, SAFE_HASH_CODECS};
 
 /// Type-safe wrappers for multihash components
 pub mod types;

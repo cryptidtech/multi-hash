@@ -25,7 +25,7 @@ use multi_codec::Codec;
 pub struct HashDigest(Vec<u8>);
 
 impl HashDigest {
-    /// Create a new HashDigest from bytes
+    /// Create a new `HashDigest` from bytes
     ///
     /// # Examples
     ///
@@ -35,7 +35,8 @@ impl HashDigest {
     /// let digest = HashDigest::new(vec![1, 2, 3, 4]);
     /// assert_eq!(digest.len(), 4);
     /// ```
-    pub fn new(bytes: Vec<u8>) -> Self {
+    #[must_use]
+    pub const fn new(bytes: Vec<u8>) -> Self {
         Self(bytes)
     }
 
@@ -49,6 +50,7 @@ impl HashDigest {
     /// let digest = HashDigest::new(vec![1, 2, 3]);
     /// assert_eq!(digest.as_bytes(), &[1, 2, 3]);
     /// ```
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
@@ -63,6 +65,7 @@ impl HashDigest {
     /// let digest = HashDigest::new(vec![0u8; 32]);
     /// assert_eq!(digest.len(), 32);
     /// ```
+    #[must_use]
     pub fn len(&self) -> usize {
         self.0.len()
     }
@@ -80,6 +83,7 @@ impl HashDigest {
     /// let digest = HashDigest::new(vec![1, 2, 3]);
     /// assert!(!digest.is_empty());
     /// ```
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -95,6 +99,7 @@ impl HashDigest {
     /// let bytes: Vec<u8> = digest.into_bytes();
     /// assert_eq!(bytes, vec![1, 2, 3]);
     /// ```
+    #[must_use]
     pub fn into_bytes(self) -> Vec<u8> {
         self.0
     }
@@ -107,7 +112,7 @@ impl From<Vec<u8>> for HashDigest {
 }
 
 impl From<HashDigest> for Vec<u8> {
-    fn from(digest: HashDigest) -> Vec<u8> {
+    fn from(digest: HashDigest) -> Self {
         digest.0
     }
 }
@@ -142,7 +147,7 @@ impl fmt::Display for HashDigest {
 pub struct AlgorithmId(Codec);
 
 impl AlgorithmId {
-    /// Create a new AlgorithmId
+    /// Create a new `AlgorithmId`
     ///
     /// # Examples
     ///
@@ -153,6 +158,7 @@ impl AlgorithmId {
     /// let algo = AlgorithmId::new(Codec::Sha2256);
     /// assert_eq!(algo.codec(), Codec::Sha2256);
     /// ```
+    #[must_use]
     pub const fn new(codec: Codec) -> Self {
         Self(codec)
     }
@@ -168,6 +174,7 @@ impl AlgorithmId {
     /// let algo = AlgorithmId::new(Codec::Sha2512);
     /// assert_eq!(algo.codec(), Codec::Sha2512);
     /// ```
+    #[must_use]
     pub const fn codec(self) -> Codec {
         self.0
     }
@@ -183,6 +190,7 @@ impl AlgorithmId {
     /// let algo = AlgorithmId::new(Codec::Sha2256);
     /// assert_eq!(algo.code(), 0x12);
     /// ```
+    #[must_use]
     pub fn code(self) -> u64 {
         self.0.code()
     }
@@ -198,6 +206,7 @@ impl AlgorithmId {
     /// let algo = AlgorithmId::new(Codec::Sha2256);
     /// assert_eq!(algo.name(), "sha2-256");
     /// ```
+    #[must_use]
     pub fn name(self) -> &'static str {
         self.0.into()
     }
@@ -210,7 +219,7 @@ impl From<Codec> for AlgorithmId {
 }
 
 impl From<AlgorithmId> for Codec {
-    fn from(algo: AlgorithmId) -> Codec {
+    fn from(algo: AlgorithmId) -> Self {
         algo.0
     }
 }

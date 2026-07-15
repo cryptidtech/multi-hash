@@ -2,7 +2,7 @@
 //! Property-based tests for multi-hash using proptest
 
 use multi_codec::Codec;
-use multi_hash::{Builder, Multihash, HASH_CODECS};
+use multi_hash::{Builder, HASH_CODECS, Multihash};
 use multi_trait::TryDecodeFrom;
 use multi_util::CodecInfo;
 use proptest::prelude::*;
@@ -11,7 +11,7 @@ use proptest::prelude::*;
 #[test]
 fn test_multihash_roundtrip() {
     proptest!(|(data in prop::collection::vec(any::<u8>(), 0..1024))| {
-        for &codec in HASH_CODECS.iter() {
+        for &codec in &HASH_CODECS {
             let mh1 = Builder::new_from_bytes(codec, &data).unwrap().try_build().unwrap();
             let bytes: Vec<u8> = mh1.clone().into();
             let (mh2, remaining) = Multihash::try_decode_from(&bytes).unwrap();
@@ -57,7 +57,7 @@ fn test_different_data_different_hash() {
 #[test]
 fn test_codec_preserved() {
     proptest!(|(data in prop::collection::vec(any::<u8>(), 0..256))| {
-        for &codec in HASH_CODECS.iter() {
+        for &codec in &HASH_CODECS {
             let mh1 = Builder::new_from_bytes(codec, &data).unwrap().try_build().unwrap();
             let bytes: Vec<u8> = mh1.clone().into();
             let mh2 = Multihash::try_from(bytes.as_ref()).unwrap();
@@ -73,7 +73,7 @@ fn test_codec_preserved() {
 #[test]
 fn test_empty_data_valid() {
     proptest!(|(_unit in 0..1u8)| {
-        for &codec in HASH_CODECS.iter() {
+        for &codec in &HASH_CODECS {
             let result = Builder::new_from_bytes(codec, []);
             prop_assert!(result.is_ok());
         }

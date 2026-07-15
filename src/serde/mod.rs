@@ -7,7 +7,7 @@ mod ser;
 mod tests {
     use crate::prelude::{Base, Builder, Codec, Multihash};
     use multi_trait::Null;
-    use serde_test::{assert_tokens, Configure, Token};
+    use serde_test::{Configure, Token, assert_tokens};
 
     #[test]
     fn test_serde_compact() {
