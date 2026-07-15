@@ -1,13 +1,18 @@
-// SPDX-License-Idnetifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0
+//! Multihash implementation with support for multiple cryptographic hash algorithms
+//!
+//! This module provides the core [`Multihash`] type and [`Builder`] for creating
+//! self-describing hash digests.
+
 use crate::Error;
 use core::fmt;
-use digest::{Digest, DynDigest};
-use multibase::Base;
-use multicodec::Codec;
-use multitrait::{Null, TryDecodeFrom};
-use multiutil::{BaseEncoded, CodecInfo, DetectedEncoder, EncodingInfo, Varbytes};
-use std::hash::Hash;
-use typenum::consts::*;
+use core::hash::Hash;
+use digest::{Digest, DynDigest, InvalidBufferSize};
+use multi_base::Base;
+use multi_codec::Codec;
+use multi_trait::{EncodeInto, Null, TryDecodeFrom};
+use multi_util::{BaseEncoded, CodecInfo, DetectedEncoder, EncodingInfo, Varbytes};
+use typenum::consts::{U28, U32, U48, U64};
 
 /// the hash codecs currently supported
 pub const HASH_CODECS: [Codec; 23] = [
@@ -54,6 +59,50 @@ pub const SIGIL: Codec = Codec::Multihash;
 /// a base encoded multihash
 pub type EncodedMultihash = BaseEncoded<Multihash, DetectedEncoder>;
 
+#[derive(Clone)]
+struct Blake3DynDigest(blake3::Hasher);
+
+impl Blake3DynDigest {
+    fn new() -> Self {
+        Self(blake3::Hasher::new())
+    }
+}
+
+impl DynDigest for Blake3DynDigest {
+    fn update(&mut self, data: &[u8]) {
+        self.0.update(data);
+    }
+
+    fn finalize_into(self, buf: &mut [u8]) -> Result<(), InvalidBufferSize> {
+        if buf.len() != self.output_size() {
+            return Err(InvalidBufferSize);
+        }
+        buf.copy_from_slice(self.0.finalize().as_bytes());
+        Ok(())
+    }
+
+    fn finalize_into_reset(&mut self, buf: &mut [u8]) -> Result<(), InvalidBufferSize> {
+        if buf.len() != self.output_size() {
+            return Err(InvalidBufferSize);
+        }
+        buf.copy_from_slice(self.0.finalize().as_bytes());
+        self.reset();
+        Ok(())
+    }
+
+    fn reset(&mut self) {
+        self.0 = blake3::Hasher::new();
+    }
+
+    fn output_size(&self) -> usize {
+        blake3::OUT_LEN
+    }
+
+    fn box_clone(&self) -> Box<dyn DynDigest> {
+        Box::new(self.clone())
+    }
+}
+
 /// inner implementation of the multihash
 #[derive(Clone, Default, Eq, Ord, PartialEq, PartialOrd, Hash)]
 pub struct Multihash {
@@ -87,12 +136,16 @@ impl EncodingInfo for Multihash {
 }
 
 impl From<Multihash> for Vec<u8> {
-    fn from(mh: Multihash) -> Vec<u8> {
-        let mut v = Vec::default();
-        // add in the hash codec
-        v.append(&mut mh.codec.into());
-        // add in the hash data
-        v.append(&mut Varbytes(mh.hash).into());
+    fn from(mh: Multihash) -> Self {
+        // Pre-calculate total size: codec varint + length varint + hash bytes
+        let codec_bytes: Self = mh.codec.into();
+        let len_bytes = mh.hash.len().encode_into();
+        let total = codec_bytes.len() + len_bytes.len() + mh.hash.len();
+
+        let mut v = Self::with_capacity(total);
+        v.extend_from_slice(&codec_bytes);
+        v.extend_from_slice(&len_bytes);
+        v.extend_from_slice(&mh.hash);
         v
     }
 }
@@ -130,11 +183,11 @@ impl AsRef<[u8]> for Multihash {
 /// Multihashes can have a null value
 impl Null for Multihash {
     fn null() -> Self {
-        Multihash::default()
+        Self::default()
     }
 
     fn is_null(&self) -> bool {
-        *self == Multihash::default()
+        *self == Self::default()
     }
 }
 
@@ -160,14 +213,20 @@ pub struct Builder {
 
 impl Builder {
     /// create a hash with the given codec
+    #[must_use]
     pub fn new(codec: Codec) -> Self {
-        Builder {
+        Self {
             codec,
             ..Default::default()
         }
     }
 
     /// create a new builder from a hash
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::UnsupportedHash` if `codec` is not a recognized hash
+    /// algorithm in [`HASH_CODECS`].
     pub fn new_from_bytes(codec: Codec, bytes: impl AsRef<[u8]>) -> Result<Self, Error> {
         let mut hasher: Box<dyn DynDigest> = match codec {
             Codec::Blake2B224 => Box::new(blake2::Blake2b::<U28>::new()),
@@ -176,7 +235,7 @@ impl Builder {
             Codec::Blake2B512 => Box::new(blake2::Blake2b::<U64>::new()),
             Codec::Blake2S224 => Box::new(blake2::Blake2s::<U28>::new()),
             Codec::Blake2S256 => Box::new(blake2::Blake2s::<U32>::new()),
-            Codec::Blake3 => Box::new(blake3::Hasher::new()),
+            Codec::Blake3 => Box::new(Blake3DynDigest::new()),
             Codec::Md5 => Box::new(md5::Md5::new()),
             Codec::Ripemd128 => Box::new(ripemd::Ripemd128::new()),
             Codec::Ripemd160 => Box::new(ripemd::Ripemd160::new()),
@@ -193,7 +252,7 @@ impl Builder {
             Codec::Sha3256 => Box::new(sha3::Sha3_256::new()),
             Codec::Sha3384 => Box::new(sha3::Sha3_384::new()),
             Codec::Sha3512 => Box::new(sha3::Sha3_512::new()),
-            _ => return Err(Error::UnsupportedHash(codec)),
+            _ => return Err(Error::unsupported_hash(codec)),
         };
 
         // hash the data
@@ -207,18 +266,24 @@ impl Builder {
     }
 
     /// set the hash data
+    #[must_use]
     pub fn with_hash(mut self, hash: impl Into<Vec<u8>>) -> Self {
         self.hash = Some(hash.into());
         self
     }
 
     /// set the base encoding codec
-    pub fn with_base_encoding(mut self, base: Base) -> Self {
+    #[must_use]
+    pub const fn with_base_encoding(mut self, base: Base) -> Self {
         self.base_encoding = Some(base);
         self
     }
 
     /// build a base encoded multihash
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::MissingHash` if no hash data was set on the builder.
     pub fn try_build_encoded(&self) -> Result<EncodedMultihash, Error> {
         Ok(BaseEncoded::new(
             self.base_encoding
@@ -228,6 +293,10 @@ impl Builder {
     }
 
     /// build the multihash by hashing the provided data
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::MissingHash` if no hash data was set on the builder.
     pub fn try_build(&self) -> Result<Multihash, Error> {
         Ok(Multihash {
             codec: self.codec,
@@ -326,7 +395,7 @@ mod tests {
             .try_build_encoded()
             .unwrap();
         let s = mh.to_string();
-        println!("{:?}", mh);
+        println!("{mh:?}");
         println!("{s}");
         assert_eq!(mh, EncodedMultihash::try_from(s.as_str()).unwrap());
     }
