@@ -6,6 +6,7 @@
 
 use crate::Error;
 use core::fmt;
+use core::hash::Hash;
 use digest::{Digest, DynDigest, InvalidBufferSize};
 use multi_base::Base;
 use multi_codec::Codec;
@@ -103,7 +104,7 @@ impl DynDigest for Blake3DynDigest {
 }
 
 /// inner implementation of the multihash
-#[derive(Clone, Default, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Default, Eq, Ord, PartialEq, PartialOrd, Hash)]
 pub struct Multihash {
     /// hash codec
     pub(crate) codec: Codec,
@@ -478,5 +479,25 @@ mod tests {
             let s = mh.to_string();
             assert_eq!(h, s.as_str());
         }
+    }
+
+    #[test]
+    fn test_multihash_in_indexmap() {
+        let mut map = std::collections::HashMap::new();
+
+        let mh1 = Builder::new_from_bytes(Codec::Sha2256, b"for great justice, move every zig!")
+            .unwrap()
+            .try_build()
+            .unwrap();
+
+        let mh2 = Builder::new_from_bytes(Codec::Sha2256, b"for great justice, move every zag!")
+            .unwrap()
+            .try_build()
+            .unwrap();
+
+        map.insert(mh1, "zig");
+        map.insert(mh2, "zag");
+
+        assert_eq!(map.len(), 2);
     }
 }
