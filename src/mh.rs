@@ -9,9 +9,9 @@ use core::fmt;
 use digest::{Digest, DynDigest, InvalidBufferSize};
 use multi_base::Base;
 use multi_codec::Codec;
-use multi_trait::{Null, TryDecodeFrom};
+use multi_trait::{EncodeInto, Null, TryDecodeFrom};
 use multi_util::{BaseEncoded, CodecInfo, DetectedEncoder, EncodingInfo, Varbytes};
-use typenum::consts::*;
+use typenum::consts::{U28, U32, U48, U64};
 
 /// the hash codecs currently supported
 pub const HASH_CODECS: [Codec; 23] = [
@@ -135,12 +135,16 @@ impl EncodingInfo for Multihash {
 }
 
 impl From<Multihash> for Vec<u8> {
-    fn from(mh: Multihash) -> Vec<u8> {
-        let mut v = Vec::default();
-        // add in the hash codec
-        v.append(&mut mh.codec.into());
-        // add in the hash data
-        v.append(&mut Varbytes::new(mh.hash).into());
+    fn from(mh: Multihash) -> Self {
+        // Pre-calculate total size: codec varint + length varint + hash bytes
+        let codec_bytes: Self = mh.codec.into();
+        let len_bytes = mh.hash.len().encode_into();
+        let total = codec_bytes.len() + len_bytes.len() + mh.hash.len();
+
+        let mut v = Self::with_capacity(total);
+        v.extend_from_slice(&codec_bytes);
+        v.extend_from_slice(&len_bytes);
+        v.extend_from_slice(&mh.hash);
         v
     }
 }
@@ -178,11 +182,11 @@ impl AsRef<[u8]> for Multihash {
 /// Multihashes can have a null value
 impl Null for Multihash {
     fn null() -> Self {
-        Multihash::default()
+        Self::default()
     }
 
     fn is_null(&self) -> bool {
-        *self == Multihash::default()
+        *self == Self::default()
     }
 }
 
@@ -208,14 +212,20 @@ pub struct Builder {
 
 impl Builder {
     /// create a hash with the given codec
+    #[must_use]
     pub fn new(codec: Codec) -> Self {
-        Builder {
+        Self {
             codec,
             ..Default::default()
         }
     }
 
     /// create a new builder from a hash
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::UnsupportedHash` if `codec` is not a recognized hash
+    /// algorithm in [`HASH_CODECS`].
     pub fn new_from_bytes(codec: Codec, bytes: impl AsRef<[u8]>) -> Result<Self, Error> {
         let mut hasher: Box<dyn DynDigest> = match codec {
             Codec::Blake2B224 => Box::new(blake2::Blake2b::<U28>::new()),
@@ -255,18 +265,24 @@ impl Builder {
     }
 
     /// set the hash data
+    #[must_use]
     pub fn with_hash(mut self, hash: impl Into<Vec<u8>>) -> Self {
         self.hash = Some(hash.into());
         self
     }
 
     /// set the base encoding codec
-    pub fn with_base_encoding(mut self, base: Base) -> Self {
+    #[must_use]
+    pub const fn with_base_encoding(mut self, base: Base) -> Self {
         self.base_encoding = Some(base);
         self
     }
 
     /// build a base encoded multihash
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::MissingHash` if no hash data was set on the builder.
     pub fn try_build_encoded(&self) -> Result<EncodedMultihash, Error> {
         Ok(BaseEncoded::new(
             self.base_encoding
@@ -276,6 +292,10 @@ impl Builder {
     }
 
     /// build the multihash by hashing the provided data
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::MissingHash` if no hash data was set on the builder.
     pub fn try_build(&self) -> Result<Multihash, Error> {
         Ok(Multihash {
             codec: self.codec,
@@ -374,7 +394,7 @@ mod tests {
             .try_build_encoded()
             .unwrap();
         let s = mh.to_string();
-        println!("{:?}", mh);
+        println!("{mh:?}");
         println!("{s}");
         assert_eq!(mh, EncodedMultihash::try_from(s.as_str()).unwrap());
     }

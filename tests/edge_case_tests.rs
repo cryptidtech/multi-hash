@@ -2,16 +2,16 @@
 //! Edge case tests for multi-hash
 
 use multi_codec::Codec;
-use multi_hash::{Builder, Error, Multihash, HASH_CODECS, SAFE_HASH_CODECS};
+use multi_hash::{Builder, Error, HASH_CODECS, Multihash, SAFE_HASH_CODECS};
 use multi_trait::{Null, TryDecodeFrom};
 use multi_util::CodecInfo;
 
 /// Test all supported hash algorithms with empty input
 #[test]
 fn test_all_algorithms_empty_input() {
-    for &codec in HASH_CODECS.iter() {
+    for &codec in &HASH_CODECS {
         let result = Builder::new_from_bytes(codec, []);
-        assert!(result.is_ok(), "Failed for {:?}", codec);
+        assert!(result.is_ok(), "Failed for {codec:?}");
 
         let mh = result.unwrap().try_build().unwrap();
         assert_eq!(mh.codec(), codec);
@@ -21,7 +21,7 @@ fn test_all_algorithms_empty_input() {
 /// Test all supported hash algorithms with single byte
 #[test]
 fn test_all_algorithms_single_byte() {
-    for &codec in HASH_CODECS.iter() {
+    for &codec in &HASH_CODECS {
         let mh = Builder::new_from_bytes(codec, [0x42])
             .unwrap()
             .try_build()
@@ -76,7 +76,7 @@ fn test_large_data() {
 fn test_binary_roundtrip_all_algorithms() {
     let data = b"test data";
 
-    for &codec in HASH_CODECS.iter() {
+    for &codec in &HASH_CODECS {
         let mh1 = Builder::new_from_bytes(codec, data)
             .unwrap()
             .try_build()
@@ -90,14 +90,13 @@ fn test_binary_roundtrip_all_algorithms() {
     }
 }
 
-/// Test SAFE_HASH_CODECS are subset of HASH_CODECS
+/// Test `SAFE_HASH_CODECS` are subset of `HASH_CODECS`
 #[test]
 fn test_safe_codecs_subset() {
-    for &safe_codec in SAFE_HASH_CODECS.iter() {
+    for &safe_codec in &SAFE_HASH_CODECS {
         assert!(
             HASH_CODECS.contains(&safe_codec),
-            "{:?} not in HASH_CODECS",
-            safe_codec
+            "{safe_codec:?} not in HASH_CODECS"
         );
     }
 }
@@ -131,7 +130,7 @@ fn test_multihash_ordering() {
     assert_ne!(mh1, mh2);
 }
 
-/// Test AsRef implementation
+/// Test `AsRef` implementation
 #[test]
 fn test_as_ref() {
     let mh = Builder::new_from_bytes(Codec::Sha2256, b"test")
@@ -151,7 +150,7 @@ fn test_debug_format() {
         .try_build()
         .unwrap();
 
-    let debug_str = format!("{:?}", mh);
+    let debug_str = format!("{mh:?}");
     assert!(!debug_str.is_empty());
     assert!(debug_str.len() > 10);
 }
@@ -183,7 +182,7 @@ fn test_clone() {
     assert_eq!(mh1.as_ref(), mh2.as_ref());
 }
 
-/// Test TryDecodeFrom with trailing data
+/// Test `TryDecodeFrom` with trailing data
 #[test]
 fn test_decode_with_trailing_data() {
     let mh1 = Builder::new_from_bytes(Codec::Sha2256, b"test")

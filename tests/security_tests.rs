@@ -106,7 +106,7 @@ fn test_null_safety() {
     assert!(null_mh.is_null());
 
     // Encoding null should not panic
-    let bytes: Vec<u8> = null_mh.clone().into();
+    let bytes: Vec<u8> = null_mh.into();
     let decoded = Multihash::try_from(bytes.as_ref()).unwrap();
     assert!(decoded.is_null());
 }
@@ -126,7 +126,7 @@ fn test_error_send_sync() {
 fn test_safe_hash_codecs_functional() {
     let data = b"safety test data";
 
-    for &codec in SAFE_HASH_CODECS.iter() {
+    for &codec in &SAFE_HASH_CODECS {
         let mh = Builder::new_from_bytes(codec, data)
             .unwrap()
             .try_build()

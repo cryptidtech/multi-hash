@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Error types for multi-hash
-//!
-//! This module provides comprehensive error types with detailed context
-//! for debugging and better user experience.
 
 /// Errors produced by the multi-hash crate
 ///
@@ -158,7 +155,7 @@ pub enum Error {
 }
 
 impl Error {
-    /// Create an UnsupportedHash error
+    /// Create an `UnsupportedHash` error
     ///
     /// # Examples
     ///
@@ -169,11 +166,12 @@ impl Error {
     /// let err = Error::unsupported_hash(Codec::Identity);
     /// assert!(matches!(err, Error::UnsupportedHash { .. }));
     /// ```
-    pub fn unsupported_hash(codec: multi_codec::Codec) -> Self {
+    #[must_use]
+    pub const fn unsupported_hash(codec: multi_codec::Codec) -> Self {
         Self::UnsupportedHash { codec }
     }
 
-    /// Create an InvalidDigestLength error
+    /// Create an `InvalidDigestLength` error
     ///
     /// # Examples
     ///
@@ -184,7 +182,8 @@ impl Error {
     /// let err = Error::invalid_digest_length(Codec::Sha2256, 32, 16);
     /// assert!(matches!(err, Error::InvalidDigestLength { .. }));
     /// ```
-    pub fn invalid_digest_length(
+    #[must_use]
+    pub const fn invalid_digest_length(
         algorithm: multi_codec::Codec,
         expected: usize,
         actual: usize,
@@ -196,7 +195,7 @@ impl Error {
         }
     }
 
-    /// Create a HashComputeFailed error
+    /// Create a `HashComputeFailed` error
     ///
     /// # Examples
     ///
@@ -231,7 +230,8 @@ impl Error {
     /// let err = Error::unsupported_hash(Codec::Identity);
     /// assert_eq!(err.kind(), "UnsupportedHash");
     /// ```
-    pub fn kind(&self) -> &str {
+    #[must_use]
+    pub const fn kind(&self) -> &str {
         match self {
             Self::Multicodec(_) => "Multicodec",
             Self::Multiutil(_) => "Multiutil",
@@ -257,22 +257,22 @@ impl Error {
     /// let context = err.context();
     /// assert!(!context.is_empty());
     /// ```
+    #[must_use]
     pub fn context(&self) -> String {
         match self {
-            Self::Multicodec(e) => format!("Multicodec error: {}", e),
-            Self::Multiutil(e) => format!("Multiutil error: {}", e),
+            Self::Multicodec(e) => format!("Multicodec error: {e}"),
+            Self::Multiutil(e) => format!("Multiutil error: {e}"),
             Self::MissingHash => "Missing hash data in builder".to_string(),
-            Self::UnsupportedHash { codec } => format!("Unsupported hash: {:?}", codec),
+            Self::UnsupportedHash { codec } => format!("Unsupported hash: {codec:?}"),
             Self::InvalidDigestLength {
                 algorithm,
                 expected,
                 actual,
             } => format!(
-                "Invalid digest length for {:?}: expected {}, got {}",
-                algorithm, expected, actual
+                "Invalid digest length for {algorithm:?}: expected {expected}, got {actual}"
             ),
             Self::HashComputeFailed { algorithm, message } => {
-                format!("Hash computation failed for {:?}: {}", algorithm, message)
+                format!("Hash computation failed for {algorithm:?}: {message}")
             }
         }
     }
@@ -328,7 +328,7 @@ mod tests {
             Error::hash_compute_failed(Codec::Sha2256, "test"),
         ];
 
-        let kinds: Vec<_> = errors.iter().map(|e| e.kind()).collect();
+        let kinds: Vec<_> = errors.iter().map(Error::kind).collect();
         assert_eq!(kinds.len(), 4);
 
         // All kinds should be unique

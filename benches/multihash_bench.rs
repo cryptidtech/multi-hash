@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Performance benchmarks for multi-hash
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use multi_codec::Codec;
 use multi_hash::{Builder, Multihash};
 use multi_trait::TryDecodeFrom;
@@ -22,7 +22,7 @@ fn bench_hash_computation(c: &mut Criterion) {
 
     for (name, codec) in algorithms {
         group.bench_with_input(BenchmarkId::new("compute", name), &codec, |b, &codec| {
-            b.iter(|| Builder::new_from_bytes(codec, data).unwrap().try_build())
+            b.iter(|| Builder::new_from_bytes(codec, data).unwrap().try_build());
         });
     }
 
@@ -39,7 +39,7 @@ fn bench_encoding(c: &mut Criterion) {
     c.bench_function("multihash_to_bytes", |b| {
         b.iter(|| {
             let _bytes: Vec<u8> = black_box(mh.clone()).into();
-        })
+        });
     });
 }
 
@@ -52,7 +52,7 @@ fn bench_decoding(c: &mut Criterion) {
     let bytes: Vec<u8> = mh.into();
 
     c.bench_function("multihash_from_bytes", |b| {
-        b.iter(|| Multihash::try_from(black_box(bytes.as_ref())))
+        b.iter(|| Multihash::try_from(black_box(bytes.as_ref())));
     });
 }
 
@@ -62,8 +62,8 @@ fn bench_roundtrip(c: &mut Criterion) {
 
     let data = b"roundtrip benchmark data";
 
-    for &codec in [Codec::Blake3, Codec::Sha2256, Codec::Sha3256].iter() {
-        let name = format!("{:?}", codec);
+    for &codec in &[Codec::Blake3, Codec::Sha2256, Codec::Sha3256] {
+        let name = format!("{codec:?}");
         group.bench_with_input(BenchmarkId::new("full", &name), &codec, |b, &codec| {
             b.iter(|| {
                 let mh1 = Builder::new_from_bytes(codec, data)
@@ -72,7 +72,7 @@ fn bench_roundtrip(c: &mut Criterion) {
                     .unwrap();
                 let bytes: Vec<u8> = mh1.into();
                 let _mh2 = Multihash::try_from(bytes.as_ref()).unwrap();
-            })
+            });
         });
     }
 
@@ -92,7 +92,7 @@ fn bench_data_sizes(c: &mut Criterion) {
                 Builder::new_from_bytes(Codec::Sha2256, black_box(data))
                     .unwrap()
                     .try_build()
-            })
+            });
         });
     }
 
@@ -102,7 +102,7 @@ fn bench_data_sizes(c: &mut Criterion) {
 /// Benchmark builder pattern operations
 fn bench_builder(c: &mut Criterion) {
     c.bench_function("builder_from_bytes", |b| {
-        b.iter(|| Builder::new_from_bytes(black_box(Codec::Sha2256), black_box(b"data")))
+        b.iter(|| Builder::new_from_bytes(black_box(Codec::Sha2256), black_box(b"data")));
     });
 
     let hash = vec![0u8; 32];
@@ -111,11 +111,11 @@ fn bench_builder(c: &mut Criterion) {
             Builder::new(black_box(Codec::Sha2256))
                 .with_hash(black_box(hash.clone()))
                 .try_build()
-        })
+        });
     });
 }
 
-/// Benchmark TryDecodeFrom with varying encoded sizes
+/// Benchmark `TryDecodeFrom` with varying encoded sizes
 fn bench_decode_from(c: &mut Criterion) {
     let mut group = c.benchmark_group("decode_from");
 
@@ -133,7 +133,7 @@ fn bench_decode_from(c: &mut Criterion) {
         let bytes: Vec<u8> = mh.into();
 
         group.bench_with_input(BenchmarkId::new("decode", name), &bytes, |b, bytes| {
-            b.iter(|| Multihash::try_decode_from(black_box(bytes.as_ref())))
+            b.iter(|| Multihash::try_decode_from(black_box(bytes.as_ref())));
         });
     }
 

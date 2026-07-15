@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Integration tests for multi-hash with other workspace crates
+#![allow(clippy::unreadable_literal)]
 
 use multi_base::Base;
 use multi_codec::Codec;
@@ -13,7 +14,7 @@ fn test_multicodec_integration() {
     // Verify all hash codecs are valid Codec values
     use multi_hash::HASH_CODECS;
 
-    for &codec in HASH_CODECS.iter() {
+    for &codec in &HASH_CODECS {
         // Should be able to get codec properties
         let code = codec.code();
         let name = codec.as_str();
@@ -23,7 +24,7 @@ fn test_multicodec_integration() {
     }
 }
 
-/// Test integration with multi-base through EncodedMultihash
+/// Test integration with multi-base through `EncodedMultihash`
 #[test]
 fn test_multibase_integration() {
     // Test with various base encodings
@@ -68,7 +69,7 @@ fn test_multitrait_integration() {
     assert!(remaining.is_empty());
 }
 
-/// Test integration with multi-util BaseEncoded
+/// Test integration with multi-util `BaseEncoded`
 #[test]
 fn test_multiutil_integration() {
     let mh = Builder::new_from_bytes(Codec::Blake3, b"multiutil test")
@@ -85,7 +86,7 @@ fn test_multiutil_integration() {
     assert_eq!(Multihash::preferred_encoding(), Base::Base16Lower);
 }
 
-/// Test EncodedMultihash uses BaseEncoded from multiutil
+/// Test `EncodedMultihash` uses `BaseEncoded` from multiutil
 #[test]
 fn test_encoded_multihash_type() {
     use multi_hash::EncodedMultihash;
@@ -124,7 +125,7 @@ fn test_in_collections() {
     assert_eq!(btree.len(), 2);
 
     // Vec
-    let vec = [mh1.clone(), mh2.clone()];
+    let vec = [mh1, mh2];
     assert_eq!(vec.len(), 2);
 }
 
