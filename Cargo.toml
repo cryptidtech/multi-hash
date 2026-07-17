@@ -1,6 +1,6 @@
 [package]
 name = "multi-hash"
-version = "1.0.4"
+version = "1.0.5"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Dave Grantham <dwg@linuxprogrammer.org>"]
@@ -29,6 +29,7 @@ serde = { version = "1.0", default-features = false, features = ["alloc", "deriv
 sha1 = "0.10"
 sha2 = "0.10"
 sha3 = "0.10"
+subtle = "2"
 thiserror = { version = "2.0" }
 typenum = "1.17"
 unsigned-varint = { version = "0.8", features = ["std"] }

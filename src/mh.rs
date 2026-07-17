@@ -12,6 +12,7 @@ use multi_base::Base;
 use multi_codec::Codec;
 use multi_trait::{EncodeInto, Null, TryDecodeFrom};
 use multi_util::{BaseEncoded, CodecInfo, DetectedEncoder, EncodingInfo, Varbytes};
+use subtle::ConstantTimeEq;
 use typenum::consts::{U28, U32, U48, U64};
 
 /// the hash codecs currently supported
@@ -104,6 +105,14 @@ impl DynDigest for Blake3DynDigest {
 }
 
 /// inner implementation of the multihash
+///
+/// # Constant-Time Comparison
+///
+/// `Multihash` derives [`PartialEq`], which uses a short-circuiting byte
+/// comparison and is **not** suitable for timing-sensitive contexts (e.g.
+/// comparing MACs or hashes received from an untrusted party). Use
+/// [`ct_eq`](ConstantTimeEq::ct_eq) in those contexts — it compares the
+/// `codec`, the hash length, and the hash bytes in constant time.
 #[derive(Clone, Default, Eq, Ord, PartialEq, PartialOrd, Hash)]
 pub struct Multihash {
     /// hash codec
@@ -177,6 +186,28 @@ impl<'a> TryDecodeFrom<'a> for Multihash {
 impl AsRef<[u8]> for Multihash {
     fn as_ref(&self) -> &[u8] {
         self.hash.as_ref()
+    }
+}
+
+/// Constant-time equality comparison for [`Multihash`].
+///
+/// Compares `codec`, `hash.len()`, and the hash bytes without
+/// short-circuiting. Returns `1u8` if both multihashes are equal, `0u8`
+/// otherwise. Use this instead of `PartialEq` in timing-sensitive contexts
+/// (e.g. verifying a hash received from an untrusted party).
+impl ConstantTimeEq for Multihash {
+    fn ct_eq(&self, other: &Self) -> subtle::Choice {
+        // Compare codec (Codec is a Copy enum backed by u64)
+        let codec_eq = u64::from(self.codec).ct_eq(&u64::from(other.codec));
+
+        // Compare hash lengths in constant time
+        let len_eq = self.hash.len().ct_eq(&other.hash.len());
+
+        // Compare hash bytes; ConstantTimeEq on [u8] handles unequal lengths
+        // by returning 0 (it first compares lengths, then bytes).
+        let bytes_eq = self.hash.as_slice().ct_eq(other.hash.as_slice());
+
+        codec_eq & len_eq & bytes_eq
     }
 }
 
@@ -499,5 +530,68 @@ mod tests {
         map.insert(mh2, "zag");
 
         assert_eq!(map.len(), 2);
+    }
+
+    #[test]
+    fn test_ct_eq_equal() {
+        let mh1 = Builder::new_from_bytes(Codec::Sha2256, b"hello")
+            .unwrap()
+            .try_build()
+            .unwrap();
+        let mh2 = Builder::new_from_bytes(Codec::Sha2256, b"hello")
+            .unwrap()
+            .try_build()
+            .unwrap();
+
+        assert_eq!(mh1.ct_eq(&mh2).unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn test_ct_eq_unequal_hash() {
+        let mh1 = Builder::new_from_bytes(Codec::Sha2256, b"hello")
+            .unwrap()
+            .try_build()
+            .unwrap();
+        let mh2 = Builder::new_from_bytes(Codec::Sha2256, b"world")
+            .unwrap()
+            .try_build()
+            .unwrap();
+
+        assert_eq!(mh1.ct_eq(&mh2).unwrap_u8(), 0);
+    }
+
+    #[test]
+    fn test_ct_eq_unequal_codec() {
+        let mh1 = Builder::new_from_bytes(Codec::Sha2256, b"hello")
+            .unwrap()
+            .try_build()
+            .unwrap();
+        let mh2 = Builder::new_from_bytes(Codec::Sha2256, b"hello")
+            .unwrap()
+            .try_build()
+            .unwrap();
+        // same hash bytes, different codec
+        let mh3 = Multihash {
+            codec: Codec::Sha2512,
+            hash: mh1.hash.clone(),
+        };
+
+        assert_eq!(mh1.ct_eq(&mh2).unwrap_u8(), 1);
+        assert_eq!(mh1.ct_eq(&mh3).unwrap_u8(), 0);
+    }
+
+    #[test]
+    fn test_ct_eq_unequal_length() {
+        let mh1 = Builder::new_from_bytes(Codec::Sha2256, b"hello")
+            .unwrap()
+            .try_build()
+            .unwrap();
+        // same codec, different length hash
+        let mh2 = Multihash {
+            codec: mh1.codec,
+            hash: vec![0u8; 16],
+        };
+
+        assert_eq!(mh1.ct_eq(&mh2).unwrap_u8(), 0);
     }
 }
