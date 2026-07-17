@@ -68,8 +68,35 @@ impl<'de> Deserialize<'de> for Multihash {
         if deserializer.is_human_readable() {
             deserializer.deserialize_struct(SIGIL.as_str(), FIELDS, MultihashVisitor)
         } else {
-            let b: &'de [u8] = Deserialize::deserialize(deserializer)?;
-            Ok(Self::try_from(b).map_err(|e| Error::custom(e.to_string()))?)
+            // Use `deserialize_byte_buf` with a visitor that accepts both
+            // borrowed and owned bytes. This works with `serde_test`
+            // (BorrowedBytes), `serde_cbor` (borrowed), and `ciborium`
+            // (owned). The previous `&'de [u8]` bound only worked with
+            // deserializers that support borrowing from input.
+            struct ByteBufVisitor;
+
+            impl<'de> Visitor<'de> for ByteBufVisitor {
+                type Value = Vec<u8>;
+
+                fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    f.write_str("byte buffer")
+                }
+
+                fn visit_borrowed_bytes<E: Error>(self, v: &'de [u8]) -> Result<Self::Value, E> {
+                    Ok(v.to_vec())
+                }
+
+                fn visit_bytes<E: Error>(self, v: &[u8]) -> Result<Self::Value, E> {
+                    Ok(v.to_vec())
+                }
+
+                fn visit_byte_buf<E: Error>(self, v: Vec<u8>) -> Result<Self::Value, E> {
+                    Ok(v)
+                }
+            }
+
+            let b = deserializer.deserialize_byte_buf(ByteBufVisitor)?;
+            Ok(Self::try_from(b.as_slice()).map_err(|e| Error::custom(e.to_string()))?)
         }
     }
 }

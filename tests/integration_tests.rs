@@ -8,6 +8,13 @@ use multi_hash::{Builder, Multihash};
 use multi_trait::TryDecodeFrom;
 use multi_util::{CodecInfo, EncodingInfo};
 
+/// Serialize a value to CBOR bytes using `ciborium`.
+fn cbor_to_vec<T: serde::Serialize>(value: &T) -> Vec<u8> {
+    let mut buf = Vec::new();
+    ciborium::into_writer(value, &mut buf).expect("CBOR serialize");
+    buf
+}
+
 /// Test integration with multi-codec
 #[test]
 fn test_multicodec_integration() {
@@ -199,8 +206,8 @@ mod serde_integration {
         assert_eq!(doc, decoded);
 
         // CBOR roundtrip
-        let cbor = serde_cbor::to_vec(&doc).unwrap();
-        let decoded: Document = serde_cbor::from_slice(&cbor).unwrap();
+        let cbor = cbor_to_vec(&doc);
+        let decoded: Document = ciborium::from_reader(cbor.as_slice()).unwrap();
         assert_eq!(doc, decoded);
     }
 }
