@@ -1,6 +1,6 @@
 [package]
 name = "multi-hash"
-version = "1.0.5"
+version = "1.0.6"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Dave Grantham <dwg@linuxprogrammer.org>"]
@@ -35,10 +35,10 @@ typenum = "1.17"
 unsigned-varint = { version = "0.8", features = ["std"] }
 
 [dev-dependencies]
+ciborium = "0.2"
 criterion = { version = "0.8", features = ["html_reports"] }
 hex = "0.4"
 proptest = "1.4"
-serde_cbor = "0.11"
 serde_json = "1.0"
 serde_test = "1.0"
 
