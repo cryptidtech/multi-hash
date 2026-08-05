@@ -9,14 +9,9 @@
 
 # multi-hash
 
-Rust implementation of the [Multihash](https://github.com/multiformats/multihash)
-specification for self-describing cryptographic hash digests.
+Rust implementation of the [Multihash](https://github.com/multiformats/multihash) specification for self-describing cryptographic hash digests.
 
-Multihash is a self-describing format that pairs a hash algorithm identifier
-(multicodec tag) with the raw digest bytes, enabling systems to switch hash
-algorithms without breaking compatibility. This crate provides 23 supported hash
-algorithms, type-safe wrappers, serde integration, and multibase encoding via
-the `multi-util` crate stack.
+Multihash is a self-describing format. It pairs a hash algorithm identifier (a multicodec tag) with the raw digest bytes. This lets systems switch hash algorithms without a break in compatibility. The crate gives 23 supported hash algorithms, type-safe wrappers, serde integration, and multibase encoding via the `multi-util` crate stack.
 
 ## Table of Contents
 
@@ -41,18 +36,14 @@ the `multi-util` crate stack.
 
 ## Features
 
-- **23 Hash Algorithms**: SHA1, SHA2 family, SHA3 family, Blake2, Blake3,
-  MD5, RIPEMD
-- **Builder Pattern**: Fluent API for creating multihashes from raw data or
-  existing digests
-- **Multibase Encoding**: `EncodedMultihash` smart pointer for base-encoded
-  string representation via `multi-util`'s `BaseEncoded`
-- **Serde Support**: JSON (human-readable → codec name string) and binary
-  (varint bytes) serialization (feature-gated)
-- **Binary Round-Trip**: `Into<Vec<u8>>` and `TryFrom<&[u8]>` for raw wire format
-- **Type-Safe Newtypes**: `HashDigest` and `AlgorithmId` wrappers
-- **Zero Unsafe Code**: `#![deny(unsafe_code)]` enforced at compile time
-- **Thread-Safe**: All types are `Send + Sync`
+- 23 hash algorithms. SHA1, SHA2 family, SHA3 family, Blake2, Blake3, MD5, RIPEMD.
+- Builder pattern. A fluent API to create multihashes from raw data or existing digests.
+- Multibase encoding. The `EncodedMultihash` smart pointer gives a base-encoded string representation via `BaseEncoded` from `multi-util`.
+- Serde support. JSON gives the codec name string. Binary gives the varint bytes. The `serde` feature gates it.
+- Binary round-trip. `Into<Vec<u8>>` and `TryFrom<&[u8]>` for the raw wire format.
+- Type-safe newtypes. `HashDigest` and `AlgorithmId` wrappers.
+- Zero unsafe code. `#![deny(unsafe_code)]` is set at the crate root.
+- Thread-safe. All types are `Send + Sync`.
 
 ## Install
 
@@ -70,7 +61,7 @@ To disable serde support:
 multi-hash = { version = "1.0", default-features = false }
 ```
 
-**MSRV**: Rust 1.85 (Edition 2024)
+MSRV: Rust 1.85 (Edition 2024).
 
 ## Supported Algorithms
 
@@ -87,8 +78,7 @@ multi-hash = { version = "1.0", default-features = false }
 | SHA3-384 | `Sha3384` | 48 bytes |
 | SHA3-512 | `Sha3512` | 64 bytes |
 
-See [`SAFE_HASH_CODECS`](https://docs.rs/multi-hash/latest/multi_hash/constant.SAFE_HASH_CODECS.html)
-for the constant array.
+See [`SAFE_HASH_CODECS`](https://docs.rs/multi-hash/latest/multi_hash/constant.SAFE_HASH_CODECS.html) for the constant array.
 
 ### Legacy algorithms (for compatibility)
 
@@ -110,8 +100,7 @@ for the constant array.
 | RIPEMD-320 | `Ripemd320` | 40 bytes |
 | SHA3-224 | `Sha3224` | 28 bytes |
 
-See [`HASH_CODECS`](https://docs.rs/multi-hash/latest/multi_hash/constant.HASH_CODECS.html)
-for the constant array of all 23 supported codecs.
+See [`HASH_CODECS`](https://docs.rs/multi-hash/latest/multi_hash/constant.HASH_CODECS.html) for the constant array of all 23 supported codecs.
 
 ## Usage
 
@@ -133,7 +122,7 @@ assert_eq!(multihash.as_ref().len(), 32); // SHA2-256 outputs 32 bytes
 
 ### Building from an Existing Digest
 
-If you already have a hash digest (e.g. from an external hashing library):
+If you already have a hash digest, for example from an external hashing library:
 
 ```rust
 use multi_hash::Builder;
@@ -169,8 +158,7 @@ assert_eq!(mh1, mh2);
 
 ### Base Encoding
 
-Use `try_build_encoded()` with a specific base to get an `EncodedMultihash` that
-supports `Display` and `TryFrom<&str>`:
+Use `try_build_encoded()` with a specific base. It gives an `EncodedMultihash` that supports `Display` and `TryFrom<&str>`:
 
 ```rust
 use multi_hash::Builder;
@@ -195,8 +183,7 @@ assert_eq!(encoded, decoded);
 
 ### Converting to EncodedMultihash
 
-Existing `Multihash` objects can be converted to `EncodedMultihash` using `.into()`
-(defaults to `Base16Lower`) or `EncodedMultihash::new()` with a chosen base:
+You can convert a `Multihash` to an `EncodedMultihash` with `.into()`. The default base is `Base16Lower`. You can also use `EncodedMultihash::new()` with a base of your choice:
 
 ```rust
 use multi_hash::{Builder, EncodedMultihash};
@@ -217,9 +204,7 @@ let encoded_mh2: EncodedMultihash = EncodedMultihash::new(Base::Base32Upper, mh)
 
 ### Serde Integration
 
-With the `serde` feature (enabled by default), `Multihash` implements
-`Serialize` and `Deserialize` — strings in human-readable formats, varint bytes
-in binary formats:
+With the `serde` feature on by default, `Multihash` implements `Serialize` and `Deserialize`. Human-readable formats give the codec name and the hex digest. Binary formats give the varint bytes:
 
 ```rust
 use multi_hash::Builder;
@@ -240,7 +225,7 @@ let doc = DocumentHash {
     timestamp: 1234567890,
 };
 
-// Serialize to JSON (human-readable → codec name + hex digest)
+// Serialize to JSON (human-readable - codec name + hex digest)
 let json = serde_json::to_string(&doc).unwrap();
 println!("{}", json);
 
@@ -278,7 +263,7 @@ match Builder::new(Codec::Sha2256).try_build() {
 
 ### Type-Safe Newtypes
 
-For additional type safety, use the newtype wrappers:
+For more type safety, use the newtype wrappers:
 
 ```rust
 use multi_hash::types::{HashDigest, AlgorithmId};
@@ -298,8 +283,7 @@ assert_eq!(algo.code(), 0x12);
 
 ## Testing
 
-The crate has 110 tests across unit, integration, property-based, security, and
-doc-test suites:
+The crate has 110 tests across unit, integration, property-based, security, and doc-test suites:
 
 ```bash
 # Run all tests
@@ -322,11 +306,11 @@ cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
 ```
 
+CI collects coverage with `cargo-llvm-cov` and uploads the result to Codecov.
+
 ## Feature Flags
 
-- **`serde`** (default): Enables serde serialization/deserialization. When
-  enabled, `Multihash` implements `Serialize` and `Deserialize` — codec name
-  and hex digest in human-readable formats, varint bytes in binary formats.
+- `serde` (default). Enables serde serialization and deserialization. When on, `Multihash` implements `Serialize` and `Deserialize`. Human-readable formats give the codec name and the hex digest. Binary formats give the varint bytes.
 
 ### Disabling Default Features
 
@@ -337,11 +321,14 @@ multi-hash = { version = "1.0", default-features = false }
 
 ## Security
 
-- `#![deny(unsafe_code)]` enforced at compile time
-- All errors return `Result` types — no panics on invalid input
-- All types are `Send + Sync` with no shared mutable state
-- Hash computation uses vetted cryptographic libraries from the RustCrypto
-  ecosystem
+- `#![deny(unsafe_code)]` is set at the crate root.
+- All errors return `Result`. No path panics on invalid input.
+- All types are `Send + Sync` with no shared mutable state.
+- Hash computation uses vetted cryptographic libraries from the RustCrypto ecosystem.
+- `impl subtle::ConstantTimeEq for Multihash` is available for timing-sensitive comparisons.
+- The `Varbytes` decode path enforces a decoded-size cap (16 MiB) and buffer-length checks. This mitigates CWE-400 and CWE-125.
+
+See [SECURITY.md](SECURITY.md) for the full security policy.
 
 ## Maintainers
 
@@ -349,16 +336,16 @@ This repo: [@dgrantham](https://github.com/dgrantham).
 
 ## Contribute
 
-Contributions welcome! Please check out [the issues](https://github.com/cryptidtech/multi-hash/issues).
+Contributions are welcome. Please check out [the issues](https://github.com/cryptidtech/multi-hash/issues).
 
 ### Development Guidelines
 
-- Run `cargo fmt` before committing
-- Run `cargo clippy -- -D warnings` to check for issues
-- Add tests for new features
-- Update documentation for API changes
-- Run the full test suite: `cargo test --all-features`
+- Run `cargo fmt` before you commit.
+- Run `cargo clippy -- -D warnings` to check for issues.
+- Add tests for new features.
+- Update documentation for API changes.
+- Run the full test suite: `cargo test --all-features`.
 
 ## License
 
-[Apache-2.0](LICENSE) © Cryptid Technologies
+[Apache-2.0](LICENSE) (c) Cryptid Technologies
