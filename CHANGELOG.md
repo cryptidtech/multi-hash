@@ -5,6 +5,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-08-13
+
+### Changed
+
+- Upgraded the digest stack from digest 0.10 to digest 0.11. This is an internal upgrade with no public API change. The `DynDigest` trait API is the same in both versions. `multi-hash` does not re-export any digest traits in its public API; the public surface (`Multihash`, `Builder`, `EncodedMultihash`, `Error`, `AlgorithmId`, `HashDigest`, `HASH_CODECS`, `SAFE_HASH_CODECS`) is unchanged.
+- `sha2` upgraded from `0.10` to `0.11`.
+- `sha3` upgraded from `0.10` to `0.12`.
+- `blake2` upgraded from `0.10` to `0.11.0-rc.6`.
+- `blake3` upgraded from `1.5.1` to `1.8`.
+- `md-5` upgraded from `0.10` to `0.11`.
+- `ripemd` upgraded from `0.1.3` to `0.2`.
+- `sha1` upgraded from `0.10` to `0.11`.
+- `digest` upgraded from `0.10` to `0.11`.
+- Fixed the `Blake3DynDigest` impl to use `blake3::Hasher::finalize(&self.0)` (fully-qualified call) instead of `self.0.finalize()`, because the `traits-preview` feature makes `blake3::Hasher` implement the `Digest` trait from `digest 0.11`, and the `Digest::finalize()` method shadows the inherent `blake3::Hasher::finalize()` method when `Digest` is in scope. The qualified call returns `blake3::Hash` (which has `as_bytes()`), while the trait method returns `Array` (which does not).
+
+### Notes
+
+- This upgrade unblocks `lamport_signature_plus` support in `multi-key` (Phases 8-9 of the crate extraction plan). `lamport_signature_plus` requires digest 0.11 hash crates (sha3 0.12, sha2 0.11, blake2 0.11, shake 0.1, blake3 1.8).
+- `blake2 0.11.0-rc.6` is a release candidate. When the stable `blake2 0.11` is published, the version requirement can be loosened to `"0.11"`.
+- `blake3 1.8` still bundles its own copy of `digest 0.11` internally (via the `traits-preview` feature). The `multiple_crate_versions` clippy allow is retained until blake3 publishes a release that depends on the RustCrypto `digest 0.11` crate directly.
+
 ## [1.0.7] - 2026-07-29
 
 ### Added
@@ -99,6 +120,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Added a test suite for edge cases, integration, proptests, and security.
 - Initial published release on crates.io as `multi-hash`.
 
+[1.1.0]: https://github.com/cryptidtech/multi-hash/compare/v1.0.7...v1.1.0
 [1.0.7]: https://github.com/cryptidtech/multi-hash/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/cryptidtech/multi-hash/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/cryptidtech/multi-hash/compare/v1.0.4...v1.0.5

@@ -78,7 +78,8 @@ impl DynDigest for Blake3DynDigest {
         if buf.len() != self.output_size() {
             return Err(InvalidBufferSize);
         }
-        buf.copy_from_slice(self.0.finalize().as_bytes());
+        let hash = blake3::Hasher::finalize(&self.0);
+        buf.copy_from_slice(hash.as_bytes());
         Ok(())
     }
 
@@ -86,7 +87,8 @@ impl DynDigest for Blake3DynDigest {
         if buf.len() != self.output_size() {
             return Err(InvalidBufferSize);
         }
-        buf.copy_from_slice(self.0.finalize().as_bytes());
+        let hash = blake3::Hasher::finalize(&self.0);
+        buf.copy_from_slice(hash.as_bytes());
         self.reset();
         Ok(())
     }
