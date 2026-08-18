@@ -18,7 +18,7 @@ default = ["serde"]
 blake2 = "0.11.0-rc.6"
 blake3 = { version = "1.8", features = ["traits-preview", "zeroize"] }
 multi-base = "1.0"
-multi-codec = "1.1"
+multi-codec = "1.2"
 multi-trait = "1.0"
 multi-util = "1.1"
 digest = "0.11"
@@ -31,14 +31,14 @@ sha2 = "0.11"
 sha3 = "0.12"
 subtle = "2"
 thiserror = { version = "2.0" }
-typenum = "1.17"
+typenum = "1.20"
 unsigned-varint = { version = "0.8", features = ["std"] }
 
 [dev-dependencies]
 ciborium = "0.2"
 criterion = { version = "0.8", features = ["html_reports"] }
 hex = "0.4"
-proptest = "1.4"
+proptest = "1.11"
 serde_json = "1.0"
 serde_test = "1.0"
 
