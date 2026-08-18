@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-08-17
+
+### Fixed
+
+- Removed the `Ensure no_std` CI job from `.github/workflows/rust.yml`. This job was re-introduced in `1.1.1` by mistake. The crate is std-only (see `SECURITY.md`). It depends on `DynDigest` from the `digest` crate, which needs `Box<dyn DynDigest>` and `std::alloc`. It also depends on `unsigned-varint` with the `std` feature and `subtle`, which declares `extern crate std`. A `no_std` build is not planned for this crate. The `Ensure no_std` job always failed because the dependency stack does not compile for `thumbv6m-none-eabi`.
+
 ## [1.1.1] - 2026-08-17
 
 ### Fixed
@@ -132,6 +138,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Added a test suite for edge cases, integration, proptests, and security.
 - Initial published release on crates.io as `multi-hash`.
 
+[1.1.2]: https://github.com/cryptidtech/multi-hash/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/cryptidtech/multi-hash/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/cryptidtech/multi-hash/compare/v1.0.7...v1.1.0
 [1.0.7]: https://github.com/cryptidtech/multi-hash/compare/v1.0.6...v1.0.7
