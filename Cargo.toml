@@ -1,6 +1,6 @@
 [package]
 name = "multi-hash"
-version = "1.0.7"
+version = "1.1.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Dave Grantham <dwg@linuxprogrammer.org>"]
@@ -15,30 +15,30 @@ categories = ["cryptography", "encoding"]
 default = ["serde"]
 
 [dependencies]
-blake2 = "0.10"
-blake3 = { version = "1.5.1", features = ["traits-preview", "zeroize"] }
+blake2 = "0.11.0-rc.6"
+blake3 = { version = "1.8", features = ["traits-preview", "zeroize"] }
 multi-base = "1.0"
-multi-codec = "1.1"
+multi-codec = "1.2"
 multi-trait = "1.0"
 multi-util = "1.1"
-digest = "0.10"
+digest = "0.11"
 hex = "0.4"
-md-5 = "0.10"
-ripemd = "0.1.3"
+md-5 = "0.11"
+ripemd = "0.2"
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive"], optional = true }
-sha1 = "0.10"
-sha2 = "0.10"
-sha3 = "0.10"
+sha1 = "0.11"
+sha2 = "0.11"
+sha3 = "0.12"
 subtle = "2"
 thiserror = { version = "2.0" }
-typenum = "1.17"
+typenum = "1.20"
 unsigned-varint = { version = "0.8", features = ["std"] }
 
 [dev-dependencies]
 ciborium = "0.2"
 criterion = { version = "0.8", features = ["html_reports"] }
 hex = "0.4"
-proptest = "1.4"
+proptest = "1.11"
 serde_json = "1.0"
 serde_test = "1.0"
 
@@ -46,8 +46,9 @@ serde_test = "1.0"
 pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
 cargo = { level = "warn", priority = -1 }
-# blake3 pulls in digest 0.11 while the other RustCrypto crates use 0.10.
-# This will resolve when the rest of the ecosystem upgrades.
+# blake3 1.8 still pulls in its own digest dependency; allow the version
+# duplication until blake3 publishes a release that uses digest 0.11
+# directly from the RustCrypto ecosystem.
 multiple_crate_versions = { level = "allow", priority = 1 }
 
 [lints.rust]
