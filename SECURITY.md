@@ -40,4 +40,4 @@ Report security issues through the GitHub issue tracker. You can also report the
 
 ## CI
 
-The CI workflow runs these jobs. `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test`, an MSRV job (1.85), `cargo audit`, and a `coverage` job. The coverage job uses `cargo-llvm-cov` and uploads the result to Codecov. There is no `no_std` job. The crate is std-only (see [std-only Status](#std-only-status)).
+The CI workflow runs these jobs. `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test`, an MSRV job (1.99), `cargo audit`, and a `coverage` job. The coverage job uses `cargo-llvm-cov` and uploads the result to Codecov. There is no `no_std` job. The crate is std-only (see [std-only Status](#std-only-status)).

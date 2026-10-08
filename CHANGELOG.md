@@ -25,6 +25,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Fixed-output codecs ignore a `Builder::output_len` setting. They always produce their exact policy digest length.
 - `HASH_CODECS` grew to 25 entries, and `SAFE_HASH_CODECS` grew to 10 entries.
 - Streamed `Blake3` builds now require an `output_len` setting. A `Blake3` digest set with `with_hash` accepts 1 to `MAX_HASH_LENGTH` bytes.
+- Raised the MSRV from 1.85 to 1.99. The CI MSRV job now checks 1.99.0.
 
 ### Dependencies
 

@@ -62,7 +62,7 @@ To disable serde support:
 multi-hash = { version = "2.0", default-features = false }
 ```
 
-MSRV: Rust 1.85 (Edition 2024).
+MSRV: Rust 1.99 (Edition 2024).
 
 ## Supported Algorithms
 
