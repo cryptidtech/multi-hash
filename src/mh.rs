@@ -69,6 +69,56 @@ pub const SAFE_HASH_CODECS: [Codec; 10] = [
     Codec::Shake256,
 ];
 
+/// the FIPS approved hash codecs
+///
+/// The list holds the hash algorithms on the NIST FIPS approved list.
+/// FIPS 180-4 approves SHA-1 and the SHA-2 family. FIPS 202 approves the
+/// SHA-3 family and the SHAKE128 and SHAKE256 extendable-output functions.
+/// The pre-standard Keccak codecs outside SHA-3, BLAKE2, BLAKE3, MD5, and
+/// RIPEMD are not FIPS approved.
+///
+/// NIST SP 800-131A Rev. 2 permits SHA-1 for verification only, and the
+/// SP 800-131A Rev. 3 draft deprecates SHA-1 and the 224-bit hash functions
+/// through 2030 and disallows them after 2030. Applications that must avoid
+/// the deprecated functions can use [`SAFE_FIPS_CODECS`].
+#[cfg(feature = "fips")]
+pub const FIPS_CODECS: [Codec; 13] = [
+    Codec::Sha1,
+    Codec::Sha2224,
+    Codec::Sha2256,
+    Codec::Sha2384,
+    Codec::Sha2512,
+    Codec::Sha2512224,
+    Codec::Sha2512256,
+    Codec::Sha3224,
+    Codec::Sha3256,
+    Codec::Sha3384,
+    Codec::Sha3512,
+    Codec::Shake128,
+    Codec::Shake256,
+];
+
+/// the safe FIPS approved hash codecs
+///
+/// The list holds the FIPS approved codecs that avoid the restricted and
+/// reduced-security selections. SHA-1 is verification-only under SP 800-131A
+/// Rev. 2, and the 224-bit hashes SHA-224, SHA-512/224, and SHA3-224 fall
+/// under the SP 800-131A Rev. 3 draft restrictions through 2030. SHA-512/256
+/// does not fall under the 224-bit restrictions, but it is excluded here to
+/// apply the same strongest-selection principle as [`SAFE_HASH_CODECS`],
+/// which omits the reduced-security variants of each family.
+#[cfg(feature = "fips")]
+pub const SAFE_FIPS_CODECS: [Codec; 8] = [
+    Codec::Sha2256,
+    Codec::Sha2384,
+    Codec::Sha2512,
+    Codec::Sha3256,
+    Codec::Sha3384,
+    Codec::Sha3512,
+    Codec::Shake128,
+    Codec::Shake256,
+];
+
 /// the multicodec sigil for multihash
 pub const SIGIL: Codec = Codec::Multihash;
 

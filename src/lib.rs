@@ -201,6 +201,9 @@ pub mod mh;
 pub use mh::{
     Builder, EncodedMultihash, HASH_CODECS, MAX_HASH_LENGTH, Multihash, SAFE_HASH_CODECS,
 };
+// the FIPS approved codec constants export only with the `fips` feature
+#[cfg(feature = "fips")]
+pub use mh::{FIPS_CODECS, SAFE_FIPS_CODECS};
 
 /// Type-safe wrappers for multihash components
 pub mod types;

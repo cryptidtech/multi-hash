@@ -14,6 +14,9 @@ categories = ["cryptography", "encoding"]
 [features]
 default = ["serde"]
 
+# expose the FIPS approved codec constants, FIPS_CODECS and SAFE_FIPS_CODECS
+fips = []
+
 [dependencies]
 blake2 = "0.11.0-rc.6"
 blake3 = { version = "1.8", features = ["traits-preview", "zeroize"] }

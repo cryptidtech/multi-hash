@@ -73,6 +73,8 @@ pub enum Error {
     ///
     /// Use one of the supported hash algorithms. See the `HASH_CODECS` or
     /// `SAFE_HASH_CODECS` constants for the list of supported algorithms.
+    /// With the `fips` feature enabled, the `FIPS_CODECS` and
+    /// `SAFE_FIPS_CODECS` constants list the NIST FIPS approved algorithms.
     ///
     /// # Examples
     ///
