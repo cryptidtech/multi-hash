@@ -246,7 +246,7 @@
 //! To disable serde:
 //! ```toml
 //! [dependencies]
-//! multi-hash = { version = "1.0", default-features = false }
+//! multi-hash = { version = "2.0", default-features = false }
 //! ```
 
 #![warn(missing_docs)]

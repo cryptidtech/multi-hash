@@ -52,14 +52,14 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-multi-hash = "1.0"
+multi-hash = "2.0"
 ```
 
 To disable serde support:
 
 ```toml
 [dependencies]
-multi-hash = { version = "1.0", default-features = false }
+multi-hash = { version = "2.0", default-features = false }
 ```
 
 MSRV: Rust 1.85 (Edition 2024).
@@ -400,14 +400,14 @@ The `fips` feature composes with the default `serde` feature:
 
 ```toml
 [dependencies]
-multi-hash = { version = "1.0", features = ["fips"] }
+multi-hash = { version = "2.0", features = ["fips"] }
 ```
 
 ### Disabling Default Features
 
 ```toml
 [dependencies]
-multi-hash = { version = "1.0", default-features = false }
+multi-hash = { version = "2.0", default-features = false }
 ```
 
 ## Security
