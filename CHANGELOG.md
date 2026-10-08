@@ -5,6 +5,33 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-10-07
+
+### Added
+
+- SHAKE128 and SHAKE256 extendable-output function (XOF) support. `Codec::Shake128` and `Codec::Shake256` now end the `HASH_CODECS` list.
+- Streaming `Builder` support. `Builder::update` feeds data in chunks, and `Builder::output_len` sets the XOF output length in bytes.
+- The `MAX_HASH_LENGTH` constant. The builder rejects XOF output lengths above this 16 MiB value before any allocation or squeeze.
+- The `fips` feature. It exports the `FIPS_CODECS` and `SAFE_FIPS_CODECS` constants, which list the NIST FIPS approved hash algorithms.
+- New error variants `Error::OutputLenRequired { codec }` and `Error::OutputLenInvalid { codec, output_len, max }`. They report a missing or out-of-range XOF output length.
+
+### Changed
+
+- `Builder::new(codec)` now returns a `Result`. It returns `Error::UnsupportedHash` for a codec outside `HASH_CODECS`.
+- Removed `Builder::new_from_bytes`. Use `Builder::new` and `Builder::update` instead.
+- `Builder::try_build()` and `Builder::try_build_encoded()` now consume the builder. Clone the builder when you need a second build.
+- `Builder::try_build()` now checks the digest length against the codec's output policy. Fixed-output codecs accept only their exact policy length, and the XOF codecs accept 1 to `MAX_HASH_LENGTH` bytes.
+- Removed the derived `Default` implementation for `Builder`. Create a builder with `Builder::new(codec)`.
+- Fixed-output codecs ignore a `Builder::output_len` setting. They always produce their exact policy digest length.
+- `HASH_CODECS` grew to 25 entries, and `SAFE_HASH_CODECS` grew to 10 entries.
+- Streamed `Blake3` builds now require an `output_len` setting. A `Blake3` digest set with `with_hash` accepts 1 to `MAX_HASH_LENGTH` bytes.
+- Raised the MSRV from 1.85 to 1.99. The CI MSRV job now checks 1.99.0.
+- Made the `HashDigest::len` and `HashDigest::is_empty` methods `const`.
+
+### Dependencies
+
+- Added the `shake = "0.1"` dependency. It provides the SHAKE128 and SHAKE256 extendable-output functions.
+
 ## [1.1.2] - 2026-08-17
 
 ### Fixed
@@ -138,6 +165,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Added a test suite for edge cases, integration, proptests, and security.
 - Initial published release on crates.io as `multi-hash`.
 
+[2.0.0]: https://github.com/cryptidtech/multi-hash/compare/v1.1.2...v2.0.0
 [1.1.2]: https://github.com/cryptidtech/multi-hash/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/cryptidtech/multi-hash/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/cryptidtech/multi-hash/compare/v1.0.7...v1.1.0

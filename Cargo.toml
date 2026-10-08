@@ -1,8 +1,8 @@
 [package]
 name = "multi-hash"
-version = "1.1.2"
+version = "2.0.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.99"
 authors = ["Dave Grantham <dwg@linuxprogrammer.org>"]
 description = "Multihash self-describing cryptographic hash data"
 repository = "https://github.com/cryptidtech/multi-hash.git"
@@ -14,6 +14,9 @@ categories = ["cryptography", "encoding"]
 [features]
 default = ["serde"]
 
+# expose the FIPS approved codec constants, FIPS_CODECS and SAFE_FIPS_CODECS
+fips = []
+
 [dependencies]
 blake2 = "0.11.0-rc.6"
 blake3 = { version = "1.8", features = ["traits-preview", "zeroize"] }
@@ -21,7 +24,7 @@ multi-base = "1.0"
 multi-codec = "1.2"
 multi-trait = "1.0"
 multi-util = "1.1"
-digest = "0.11"
+digest = { version = "0.11", features = ["alloc"] }
 hex = "0.4"
 md-5 = "0.11"
 ripemd = "0.2"
@@ -29,6 +32,7 @@ serde = { version = "1.0", default-features = false, features = ["alloc", "deriv
 sha1 = "0.11"
 sha2 = "0.11"
 sha3 = "0.12"
+shake = "0.1"
 subtle = "2"
 thiserror = { version = "2.0" }
 typenum = "1.20"

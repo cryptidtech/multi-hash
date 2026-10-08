@@ -43,7 +43,9 @@ pub enum Error {
     ///
     /// # Resolution
     ///
-    /// Call `Builder::with_hash()` to set the hash digest before calling `build()`.
+    /// Call `Builder::with_hash()` to set a digest computed elsewhere. Call
+    /// `Builder::update()` to stream data. One of them must run before
+    /// `try_build()`.
     ///
     /// # Examples
     ///
@@ -56,7 +58,7 @@ pub enum Error {
     #[error(
         "Missing hash data\n\
              The multihash builder requires hash digest data.\n\
-             Call Builder::with_hash() before build()."
+             Call with_hash() or update() before try_build()."
     )]
     MissingHash,
 
@@ -73,6 +75,8 @@ pub enum Error {
     ///
     /// Use one of the supported hash algorithms. See the `HASH_CODECS` or
     /// `SAFE_HASH_CODECS` constants for the list of supported algorithms.
+    /// With the `fips` feature enabled, the `FIPS_CODECS` and
+    /// `SAFE_FIPS_CODECS` constants list the NIST FIPS approved algorithms.
     ///
     /// # Examples
     ///
@@ -95,7 +99,7 @@ pub enum Error {
 
     /// Invalid hash digest length
     ///
-    /// The provided hash digest length doesn't match the expected output
+    /// The provided hash digest length does not match the expected output
     /// size for the specified hash algorithm.
     ///
     /// # Context
@@ -125,6 +129,80 @@ pub enum Error {
         expected: usize,
         /// Actual digest length provided
         actual: usize,
+    },
+
+    /// XOF output length required
+    ///
+    /// The builder tried to finalize an extendable-output codec
+    /// (`Blake3`, `Shake128`, or `Shake256`) without an output length set
+    /// through `Builder::output_len()`.
+    ///
+    /// # Context
+    ///
+    /// - `codec`: The XOF codec that requested an output length
+    ///
+    /// # Resolution
+    ///
+    /// Call `Builder::output_len()` with a value from 1 to `MAX_HASH_LENGTH`
+    /// bytes before `try_build()` or `try_build_encoded()`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use multi_hash::Error;
+    /// use multi_codec::Codec;
+    ///
+    /// let err = Error::output_len_required(Codec::Shake128);
+    /// assert!(matches!(err, Error::OutputLenRequired { .. }));
+    /// ```
+    #[error(
+        "XOF output length required for {codec:?}\n\
+             The {codec:?} XOF needs an output length set through Builder::output_len().\n\
+             Set a value from 1 to MAX_HASH_LENGTH bytes before try_build()."
+    )]
+    OutputLenRequired {
+        /// the XOF codec that requested an output length
+        codec: multi_codec::Codec,
+    },
+
+    /// Invalid XOF output length
+    ///
+    /// The requested XOF output length is outside the allowed range of 1 to
+    /// `MAX_HASH_LENGTH` bytes. The length is checked before any allocation
+    /// or squeeze.
+    ///
+    /// # Context
+    ///
+    /// - `codec`: The XOF codec with the invalid output length
+    /// - `output_len`: The requested output length in bytes
+    /// - `max`: The maximum allowed output length in bytes
+    ///
+    /// # Resolution
+    ///
+    /// Set a value from 1 to `MAX_HASH_LENGTH` bytes through
+    /// `Builder::output_len()`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use multi_hash::Error;
+    /// use multi_codec::Codec;
+    ///
+    /// let err = Error::output_len_invalid(Codec::Shake256, 0, 16 * 1024 * 1024);
+    /// assert!(matches!(err, Error::OutputLenInvalid { .. }));
+    /// ```
+    #[error(
+        "Invalid XOF output length for {codec:?}\n\
+             The requested output length {output_len} is outside the allowed\n\
+             range of 1 to {max} bytes for {codec:?}."
+    )]
+    OutputLenInvalid {
+        /// the XOF codec with the invalid output length
+        codec: multi_codec::Codec,
+        /// the requested output length in bytes
+        output_len: usize,
+        /// the maximum allowed output length in bytes
+        max: usize,
     },
 
     /// Hash computation failed
@@ -195,6 +273,46 @@ impl Error {
         }
     }
 
+    /// Create an `OutputLenRequired` error
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use multi_hash::Error;
+    /// use multi_codec::Codec;
+    ///
+    /// let err = Error::output_len_required(Codec::Shake128);
+    /// assert!(matches!(err, Error::OutputLenRequired { .. }));
+    /// ```
+    #[must_use]
+    pub const fn output_len_required(codec: multi_codec::Codec) -> Self {
+        Self::OutputLenRequired { codec }
+    }
+
+    /// Create an `OutputLenInvalid` error
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use multi_hash::Error;
+    /// use multi_codec::Codec;
+    ///
+    /// let err = Error::output_len_invalid(Codec::Shake256, 0, 16 * 1024 * 1024);
+    /// assert!(matches!(err, Error::OutputLenInvalid { .. }));
+    /// ```
+    #[must_use]
+    pub const fn output_len_invalid(
+        codec: multi_codec::Codec,
+        output_len: usize,
+        max: usize,
+    ) -> Self {
+        Self::OutputLenInvalid {
+            codec,
+            output_len,
+            max,
+        }
+    }
+
     /// Create a `HashComputeFailed` error
     ///
     /// # Examples
@@ -238,6 +356,8 @@ impl Error {
             Self::MissingHash => "MissingHash",
             Self::UnsupportedHash { .. } => "UnsupportedHash",
             Self::InvalidDigestLength { .. } => "InvalidDigestLength",
+            Self::OutputLenRequired { .. } => "OutputLenRequired",
+            Self::OutputLenInvalid { .. } => "OutputLenInvalid",
             Self::HashComputeFailed { .. } => "HashComputeFailed",
         }
     }
@@ -271,6 +391,16 @@ impl Error {
             } => format!(
                 "Invalid digest length for {algorithm:?}: expected {expected}, got {actual}"
             ),
+            Self::OutputLenRequired { codec } => {
+                format!("XOF output length required for {codec:?}")
+            }
+            Self::OutputLenInvalid {
+                codec,
+                output_len,
+                max,
+            } => format!(
+                "Invalid XOF output length for {codec:?}: {output_len} is outside the allowed range of 1 to {max}"
+            ),
             Self::HashComputeFailed { algorithm, message } => {
                 format!("Hash computation failed for {algorithm:?}: {message}")
             }
@@ -296,11 +426,11 @@ mod tests {
         assert_eq!(err.kind(), "UnsupportedHash");
         let msg = err.to_string();
         // Check error message is present and non-empty
-        assert!(!msg.is_empty());
+        assert_ne!(msg, "");
         assert!(msg.len() > 10);
         // Check context contains codec info
         let context = err.context();
-        assert!(!context.is_empty());
+        assert_ne!(context, "");
     }
 
     #[test]
@@ -320,16 +450,40 @@ mod tests {
     }
 
     #[test]
+    fn test_output_len_required_error() {
+        let err = Error::output_len_required(Codec::Shake128);
+        assert_eq!(err.kind(), "OutputLenRequired");
+        assert!(err.to_string().contains("output length"));
+        let context = err.context();
+        assert_ne!(context, "");
+        assert!(context.contains("Shake128") || context.contains("shake-128"));
+    }
+
+    #[test]
+    fn test_output_len_invalid_error() {
+        let err = Error::output_len_invalid(Codec::Shake256, 0, 16 * 1024 * 1024);
+        assert_eq!(err.kind(), "OutputLenInvalid");
+        let msg = err.to_string();
+        assert!(msg.contains('0'));
+        assert!(msg.contains("16777216"));
+        let context = err.context();
+        assert_ne!(context, "");
+        assert!(context.contains("Shake256") || context.contains("shake-256"));
+    }
+
+    #[test]
     fn test_error_kind_uniqueness() {
         let errors = [
             Error::MissingHash,
             Error::unsupported_hash(Codec::Identity),
             Error::invalid_digest_length(Codec::Sha2256, 32, 16),
+            Error::output_len_required(Codec::Shake128),
+            Error::output_len_invalid(Codec::Shake256, 0, 16 * 1024 * 1024),
             Error::hash_compute_failed(Codec::Sha2256, "test"),
         ];
 
         let kinds: Vec<_> = errors.iter().map(Error::kind).collect();
-        assert_eq!(kinds.len(), 4);
+        assert_eq!(kinds.len(), 6);
 
         // All kinds should be unique
         for (i, k1) in kinds.iter().enumerate() {
@@ -345,7 +499,7 @@ mod tests {
     fn test_error_context_informative() {
         let err = Error::unsupported_hash(Codec::Sha2256);
         let context = err.context();
-        assert!(!context.is_empty());
+        assert_ne!(context, "");
         assert!(context.contains("Sha2256") || context.contains("sha2-256"));
 
         let err = Error::invalid_digest_length(Codec::Sha2512, 64, 32);

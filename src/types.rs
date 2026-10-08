@@ -66,7 +66,7 @@ impl HashDigest {
     /// assert_eq!(digest.len(), 32);
     /// ```
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.0.len()
     }
 
@@ -84,7 +84,7 @@ impl HashDigest {
     /// assert!(!digest.is_empty());
     /// ```
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 

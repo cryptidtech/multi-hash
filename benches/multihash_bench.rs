@@ -7,6 +7,28 @@ use multi_hash::{Builder, Multihash};
 use multi_trait::TryDecodeFrom;
 use std::hint::black_box;
 
+/// build a multihash of `data` with `codec`, streaming the data
+fn hash_bytes(codec: Codec, data: &[u8]) -> Multihash {
+    let mut builder = Builder::new(codec).unwrap();
+    builder.update(data);
+    if let Some(output_len) = xof_output_len(codec) {
+        builder.output_len(output_len);
+    }
+    builder.try_build().unwrap()
+}
+
+/// the output length the computation bench requests for an XOF codec
+///
+/// Fixed-output codecs ignore an output length, so the check applies
+/// only to the XOF arms, `Blake3`, `Shake128`, and `Shake256`.
+const fn xof_output_len(codec: Codec) -> Option<usize> {
+    match codec {
+        Codec::Blake3 | Codec::Shake128 => Some(32),
+        Codec::Shake256 => Some(64),
+        _ => None,
+    }
+}
+
 /// Benchmark hash computation for various algorithms
 fn bench_hash_computation(c: &mut Criterion) {
     let mut group = c.benchmark_group("hash_computation");
@@ -18,11 +40,19 @@ fn bench_hash_computation(c: &mut Criterion) {
         ("SHA2-512", Codec::Sha2512),
         ("SHA3-256", Codec::Sha3256),
         ("SHA3-512", Codec::Sha3512),
+        ("Shake256", Codec::Shake256),
     ];
 
     for (name, codec) in algorithms {
         group.bench_with_input(BenchmarkId::new("compute", name), &codec, |b, &codec| {
-            b.iter(|| Builder::new_from_bytes(codec, data).unwrap().try_build());
+            b.iter(|| {
+                let mut builder = Builder::new(codec).unwrap();
+                builder.update(data);
+                if let Some(output_len) = xof_output_len(codec) {
+                    builder.output_len(output_len);
+                }
+                builder.try_build()
+            });
         });
     }
 
@@ -31,10 +61,7 @@ fn bench_hash_computation(c: &mut Criterion) {
 
 /// Benchmark encoding multihash to bytes
 fn bench_encoding(c: &mut Criterion) {
-    let mh = Builder::new_from_bytes(Codec::Sha2256, b"test data")
-        .unwrap()
-        .try_build()
-        .unwrap();
+    let mh = hash_bytes(Codec::Sha2256, b"test data");
 
     c.bench_function("multihash_to_bytes", |b| {
         b.iter(|| {
@@ -45,10 +72,7 @@ fn bench_encoding(c: &mut Criterion) {
 
 /// Benchmark decoding multihash from bytes
 fn bench_decoding(c: &mut Criterion) {
-    let mh = Builder::new_from_bytes(Codec::Sha2256, b"test data")
-        .unwrap()
-        .try_build()
-        .unwrap();
+    let mh = hash_bytes(Codec::Sha2256, b"test data");
     let bytes: Vec<u8> = mh.into();
 
     c.bench_function("multihash_from_bytes", |b| {
@@ -66,10 +90,7 @@ fn bench_roundtrip(c: &mut Criterion) {
         let name = format!("{codec:?}");
         group.bench_with_input(BenchmarkId::new("full", &name), &codec, |b, &codec| {
             b.iter(|| {
-                let mh1 = Builder::new_from_bytes(codec, data)
-                    .unwrap()
-                    .try_build()
-                    .unwrap();
+                let mh1 = hash_bytes(codec, data);
                 let bytes: Vec<u8> = mh1.into();
                 let _mh2 = Multihash::try_from(bytes.as_ref()).unwrap();
             });
@@ -89,9 +110,9 @@ fn bench_data_sizes(c: &mut Criterion) {
         let data = vec![0u8; size];
         group.bench_with_input(BenchmarkId::new("sha2-256", size), &data, |b, data| {
             b.iter(|| {
-                Builder::new_from_bytes(Codec::Sha2256, black_box(data))
-                    .unwrap()
-                    .try_build()
+                let mut builder = Builder::new(Codec::Sha2256).unwrap();
+                builder.update(black_box(data));
+                builder.try_build()
             });
         });
     }
@@ -101,14 +122,19 @@ fn bench_data_sizes(c: &mut Criterion) {
 
 /// Benchmark builder pattern operations
 fn bench_builder(c: &mut Criterion) {
-    c.bench_function("builder_from_bytes", |b| {
-        b.iter(|| Builder::new_from_bytes(black_box(Codec::Sha2256), black_box(b"data")));
+    c.bench_function("builder_streaming", |b| {
+        b.iter(|| {
+            let mut builder = Builder::new(black_box(Codec::Sha2256)).unwrap();
+            builder.update(black_box(b"data"));
+            builder.try_build()
+        });
     });
 
     let hash = vec![0u8; 32];
     c.bench_function("builder_with_hash", |b| {
         b.iter(|| {
             Builder::new(black_box(Codec::Sha2256))
+                .unwrap()
                 .with_hash(black_box(hash.clone()))
                 .try_build()
         });
@@ -126,10 +152,7 @@ fn bench_decode_from(c: &mut Criterion) {
     ];
 
     for (name, codec) in test_cases {
-        let mh = Builder::new_from_bytes(codec, b"test")
-            .unwrap()
-            .try_build()
-            .unwrap();
+        let mh = hash_bytes(codec, b"test");
         let bytes: Vec<u8> = mh.into();
 
         group.bench_with_input(BenchmarkId::new("decode", name), &bytes, |b, bytes| {

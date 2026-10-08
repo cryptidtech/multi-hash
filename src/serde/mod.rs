@@ -9,6 +9,13 @@ mod tests {
     use multi_trait::Null;
     use serde_test::{Configure, Token, assert_tokens};
 
+    /// build a multihash of `data` with `codec`, streaming the data
+    fn hash_bytes(codec: Codec, data: &[u8]) -> Multihash {
+        let mut builder = Builder::new(codec).unwrap();
+        builder.update(data);
+        builder.try_build().unwrap()
+    }
+
     /// Serialize a value to CBOR bytes using `ciborium` (replaces the
     /// unmaintained `serde_cbor` dev-dependency).
     fn cbor_to_vec<T: serde::Serialize>(value: &T) -> Vec<u8> {
@@ -19,10 +26,7 @@ mod tests {
 
     #[test]
     fn test_serde_compact() {
-        let mh = Builder::new_from_bytes(Codec::Blake2S256, b"for great justice, move every zig!")
-            .unwrap()
-            .try_build()
-            .unwrap();
+        let mh = hash_bytes(Codec::Blake2S256, b"for great justice, move every zig!");
 
         assert_tokens(
             &mh.compact(), // convert to Tagged<MultihashImpl>
@@ -37,8 +41,9 @@ mod tests {
 
     #[test]
     fn test_serde_encoded_string() {
-        let mh = Builder::new_from_bytes(Codec::Blake2S256, b"for great justice, move every zig!")
-            .unwrap()
+        let mut builder = Builder::new(Codec::Blake2S256).unwrap();
+        builder.update(b"for great justice, move every zig!");
+        let mh = builder
             .with_base_encoding(Base::Base58Btc)
             .try_build_encoded()
             .unwrap();
@@ -53,10 +58,7 @@ mod tests {
 
     #[test]
     fn test_serde_string() {
-        let mh = Builder::new_from_bytes(Codec::Blake2S256, b"for great justice, move every zig!")
-            .unwrap()
-            .try_build()
-            .unwrap();
+        let mh = hash_bytes(Codec::Blake2S256, b"for great justice, move every zig!");
         assert_tokens(
             &mh.readable(),
             &[
@@ -77,10 +79,7 @@ mod tests {
 
     #[test]
     fn test_serde_json() {
-        let mh1 = Builder::new_from_bytes(Codec::Blake2S256, b"for great justice, move every zig!")
-            .unwrap()
-            .try_build()
-            .unwrap();
+        let mh1 = hash_bytes(Codec::Blake2S256, b"for great justice, move every zig!");
         let s = serde_json::to_string(&mh1).unwrap();
         assert_eq!(s, "{\"codec\":\"blake2s-256\",\"hash\":\"f20642203125d59e8b93edb676fc78de9c587cf52ccc6f219032da1f377082332b0\"}".to_string());
         let mh2: Multihash = serde_json::from_str(&s).unwrap();
@@ -89,10 +88,7 @@ mod tests {
 
     #[test]
     fn test_serde_cbor() {
-        let mh1 = Builder::new_from_bytes(Codec::Blake2S256, b"for great justice, move every zig!")
-            .unwrap()
-            .try_build()
-            .unwrap();
+        let mh1 = hash_bytes(Codec::Blake2S256, b"for great justice, move every zig!");
         let v = cbor_to_vec(&mh1);
         // Note: ciborium may encode differently than serde_cbor, so we verify
         // round-trip instead of exact byte output.
