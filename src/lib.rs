@@ -198,7 +198,9 @@ pub use error::Error;
 
 /// Multihash type and functions
 pub mod mh;
-pub use mh::{Builder, EncodedMultihash, HASH_CODECS, Multihash, SAFE_HASH_CODECS};
+pub use mh::{
+    Builder, EncodedMultihash, HASH_CODECS, MAX_HASH_LENGTH, Multihash, SAFE_HASH_CODECS,
+};
 
 /// Type-safe wrappers for multihash components
 pub mod types;

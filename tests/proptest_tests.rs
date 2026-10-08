@@ -7,10 +7,25 @@ use multi_trait::TryDecodeFrom;
 use multi_util::CodecInfo;
 use proptest::prelude::*;
 
+/// the output length these tests request for an XOF codec
+///
+/// Fixed-output codecs ignore an output length, so the helper applies
+/// only to the Shake arms.
+const fn xof_output_len(codec: Codec) -> Option<usize> {
+    match codec {
+        Codec::Shake128 => Some(32),
+        Codec::Shake256 => Some(64),
+        _ => None,
+    }
+}
+
 /// build a multihash of `data` with `codec`, streaming the data
 fn hash_bytes(codec: Codec, data: &[u8]) -> Multihash {
     let mut builder = Builder::new(codec).unwrap();
     builder.update(data);
+    if let Some(output_len) = xof_output_len(codec) {
+        builder.output_len(output_len);
+    }
     builder.try_build().unwrap()
 }
 
@@ -86,6 +101,9 @@ fn test_empty_data_valid() {
 
             let mut builder = result.unwrap();
             builder.update([]);
+            if let Some(output_len) = xof_output_len(codec) {
+                builder.output_len(output_len);
+            }
             prop_assert!(builder.try_build().is_ok());
         }
     });

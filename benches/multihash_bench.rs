@@ -14,6 +14,18 @@ fn hash_bytes(codec: Codec, data: &[u8]) -> Multihash {
     builder.try_build().unwrap()
 }
 
+/// the output length the computation bench requests for an XOF codec
+///
+/// Fixed-output codecs ignore an output length, so the check applies
+/// only to the Shake arms.
+const fn xof_output_len(codec: Codec) -> Option<usize> {
+    match codec {
+        Codec::Shake128 => Some(32),
+        Codec::Shake256 => Some(64),
+        _ => None,
+    }
+}
+
 /// Benchmark hash computation for various algorithms
 fn bench_hash_computation(c: &mut Criterion) {
     let mut group = c.benchmark_group("hash_computation");
@@ -25,6 +37,7 @@ fn bench_hash_computation(c: &mut Criterion) {
         ("SHA2-512", Codec::Sha2512),
         ("SHA3-256", Codec::Sha3256),
         ("SHA3-512", Codec::Sha3512),
+        ("Shake256", Codec::Shake256),
     ];
 
     for (name, codec) in algorithms {
@@ -32,6 +45,9 @@ fn bench_hash_computation(c: &mut Criterion) {
             b.iter(|| {
                 let mut builder = Builder::new(codec).unwrap();
                 builder.update(data);
+                if let Some(output_len) = xof_output_len(codec) {
+                    builder.output_len(output_len);
+                }
                 builder.try_build()
             });
         });

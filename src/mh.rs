@@ -7,7 +7,7 @@
 use crate::Error;
 use core::fmt;
 use core::hash::Hash;
-use digest::Digest;
+use digest::{Digest, ExtendableOutput, Update};
 use multi_base::Base;
 use multi_codec::Codec;
 use multi_trait::{EncodeInto, Null, TryDecodeFrom};
@@ -15,8 +15,19 @@ use multi_util::{BaseEncoded, CodecInfo, DetectedEncoder, EncodingInfo, Varbytes
 use subtle::ConstantTimeEq;
 use typenum::consts::{U28, U32, U48, U64};
 
+/// the maximum multihash digest output length in bytes
+///
+/// The builder rejects XOF output lengths above this value before any
+/// allocation or squeeze. The value is 16 MiB, aligned with the 16 MiB
+/// decode cap that `Varbytes` in `multi-util` enforces.
+pub const MAX_HASH_LENGTH: usize = 16 * 1024 * 1024;
+
 /// the hash codecs currently supported
-pub const HASH_CODECS: [Codec; 23] = [
+///
+/// The two extendable-output codecs, `Shake128` and `Shake256`, end the
+/// list; a builder for them requires an explicit digest output length
+/// through [`Builder::output_len`].
+pub const HASH_CODECS: [Codec; 25] = [
     Codec::Blake2B224,
     Codec::Blake2B256,
     Codec::Blake2B384,
@@ -40,10 +51,12 @@ pub const HASH_CODECS: [Codec; 23] = [
     Codec::Sha3256,
     Codec::Sha3384,
     Codec::Sha3512,
+    Codec::Shake128,
+    Codec::Shake256,
 ];
 
 /// the safe hash codecs current supported
-pub const SAFE_HASH_CODECS: [Codec; 8] = [
+pub const SAFE_HASH_CODECS: [Codec; 10] = [
     Codec::Blake2B256,
     Codec::Blake2B384,
     Codec::Blake2B512,
@@ -52,6 +65,8 @@ pub const SAFE_HASH_CODECS: [Codec; 8] = [
     Codec::Sha3256,
     Codec::Sha3384,
     Codec::Sha3512,
+    Codec::Shake128,
+    Codec::Shake256,
 ];
 
 /// the multicodec sigil for multihash
@@ -60,56 +75,99 @@ pub const SIGIL: Codec = Codec::Multihash;
 /// a base encoded multihash
 pub type EncodedMultihash = BaseEncoded<Multihash, DetectedEncoder>;
 
-/// exact digest length in bytes for each codec in [`HASH_CODECS`] order
-const DIGEST_LENGTHS: [usize; 23] = [
-    28, // Blake2B224
-    32, // Blake2B256
-    48, // Blake2B384
-    64, // Blake2B512
-    28, // Blake2S224
-    32, // Blake2S256
-    32, // Blake3
-    16, // Md5
-    16, // Ripemd128
-    20, // Ripemd160
-    32, // Ripemd256
-    40, // Ripemd320
-    20, // Sha1
-    28, // Sha2224
-    32, // Sha2256
-    48, // Sha2384
-    64, // Sha2512
-    28, // Sha2512224
-    32, // Sha2512256
-    28, // Sha3224
-    32, // Sha3256
-    48, // Sha3384
-    64, // Sha3512
+/// the digest output policy of a hash codec in [`HASH_CODECS`]
+///
+/// Fixed-output codecs produce one exact digest length. The XOF codecs,
+/// `Shake128` and `Shake256`, produce a length the caller chooses within
+/// `1..=MAX_HASH_LENGTH` bytes.
+#[derive(Clone, Copy)]
+enum OutputPolicy {
+    /// exact digest length in bytes
+    Fixed(usize),
+
+    /// extendable-output codec; the caller sets the digest length
+    Xof,
+}
+
+/// the digest output policy for each codec in [`HASH_CODECS`] order
+const OUTPUT_POLICIES: [OutputPolicy; 25] = [
+    OutputPolicy::Fixed(28), // Blake2B224
+    OutputPolicy::Fixed(32), // Blake2B256
+    OutputPolicy::Fixed(48), // Blake2B384
+    OutputPolicy::Fixed(64), // Blake2B512
+    OutputPolicy::Fixed(28), // Blake2S224
+    OutputPolicy::Fixed(32), // Blake2S256
+    OutputPolicy::Fixed(32), // Blake3
+    OutputPolicy::Fixed(16), // Md5
+    OutputPolicy::Fixed(16), // Ripemd128
+    OutputPolicy::Fixed(20), // Ripemd160
+    OutputPolicy::Fixed(32), // Ripemd256
+    OutputPolicy::Fixed(40), // Ripemd320
+    OutputPolicy::Fixed(20), // Sha1
+    OutputPolicy::Fixed(28), // Sha2224
+    OutputPolicy::Fixed(32), // Sha2256
+    OutputPolicy::Fixed(48), // Sha2384
+    OutputPolicy::Fixed(64), // Sha2512
+    OutputPolicy::Fixed(28), // Sha2512224
+    OutputPolicy::Fixed(32), // Sha2512256
+    OutputPolicy::Fixed(28), // Sha3224
+    OutputPolicy::Fixed(32), // Sha3256
+    OutputPolicy::Fixed(48), // Sha3384
+    OutputPolicy::Fixed(64), // Sha3512
+    OutputPolicy::Xof,       // Shake128
+    OutputPolicy::Xof,       // Shake256
 ];
 
 // the digest policy table must stay parallel to `HASH_CODECS`
-const _: () = assert!(DIGEST_LENGTHS.len() == HASH_CODECS.len());
+const _: () = assert!(OUTPUT_POLICIES.len() == HASH_CODECS.len());
 
-/// the exact digest length required by a fixed-output hash codec
-fn digest_length(codec: Codec) -> Option<usize> {
+/// the digest output policy of a supported hash codec
+///
+/// Returns `None` for codecs outside [`HASH_CODECS`].
+fn output_policy(codec: Codec) -> Option<OutputPolicy> {
     let index = HASH_CODECS
         .iter()
         .position(|&candidate| candidate == codec)?;
-    DIGEST_LENGTHS.get(index).copied()
+    OUTPUT_POLICIES.get(index).copied()
 }
 
-/// check a digest against the codec's fixed output length
+/// check a digest against the codec's output policy
 ///
-/// Codecs without a fixed digest length pass any length.
+/// Fixed-output codecs require the exact digest length. XOF codecs accept
+/// `1..=MAX_HASH_LENGTH` bytes.
 fn validate_digest_length(codec: Codec, hash: &[u8]) -> Result<(), Error> {
-    let Some(expected) = digest_length(codec) else {
-        return Ok(());
-    };
-    let actual = hash.len();
-    if actual == expected {
-        Ok(())
-    } else {
-        Err(Error::invalid_digest_length(codec, expected, actual))
+    match output_policy(codec) {
+        Some(OutputPolicy::Fixed(expected)) => {
+            let actual = hash.len();
+            if actual == expected {
+                Ok(())
+            } else {
+                Err(Error::invalid_digest_length(codec, expected, actual))
+            }
+        }
+        Some(OutputPolicy::Xof) => {
+            let actual = hash.len();
+            if actual == 0 || actual > MAX_HASH_LENGTH {
+                Err(Error::output_len_invalid(codec, actual, MAX_HASH_LENGTH))
+            } else {
+                Ok(())
+            }
+        }
+        None => Ok(()),
+    }
+}
+
+/// validate the XOF output length a builder requests at build time
+///
+/// The length runs through the `1..=MAX_HASH_LENGTH` policy before any
+/// allocation or squeeze.
+const fn validate_output_len(codec: Codec, output_len: Option<usize>) -> Result<usize, Error> {
+    match output_len {
+        None => Err(Error::output_len_required(codec)),
+        Some(len) if len == 0 || len > MAX_HASH_LENGTH => {
+            Err(Error::output_len_invalid(codec, len, MAX_HASH_LENGTH))
+        }
+        Some(len) => Ok(len),
     }
 }
 
@@ -169,6 +227,10 @@ enum Hasher {
     Sha3384(sha3::Sha3_384),
     /// sha3-512 with a 512-bit digest
     Sha3512(sha3::Sha3_512),
+    /// shake128 extendable-output function
+    Shake128(shake::Shake128),
+    /// shake256 extendable-output function
+    Shake256(shake::Shake256),
 }
 
 impl Hasher {
@@ -201,6 +263,8 @@ impl Hasher {
             Codec::Sha3256 => Self::Sha3256(sha3::Sha3_256::new()),
             Codec::Sha3384 => Self::Sha3384(sha3::Sha3_384::new()),
             Codec::Sha3512 => Self::Sha3512(sha3::Sha3_512::new()),
+            Codec::Shake128 => Self::Shake128(shake::Shake128::default()),
+            Codec::Shake256 => Self::Shake256(shake::Shake256::default()),
             _ => return None,
         })
     }
@@ -235,41 +299,67 @@ impl Hasher {
             Self::Sha3256(h) => Digest::update(h, data),
             Self::Sha3384(h) => Digest::update(h, data),
             Self::Sha3512(h) => Digest::update(h, data),
+            // the XOF arms take `Update::update`; they do not implement
+            // the fixed-output `Digest` trait
+            Self::Shake128(h) => Update::update(h, data),
+            Self::Shake256(h) => Update::update(h, data),
         }
     }
 
     /// finish the streamed hash and return the digest bytes
-    fn finalize(self) -> Vec<u8> {
+    ///
+    /// Fixed-output arms ignore `output_len` and produce their policy
+    /// length. The XOF arms require an output length of `1..=MAX_HASH_LENGTH`
+    /// bytes, checked before any allocation or squeeze.
+    fn finalize(self, codec: Codec, output_len: Option<usize>) -> Result<Vec<u8>, Error> {
         match self {
-            Self::Blake2B224(h) => Digest::finalize(h).to_vec(),
-            Self::Blake2B256(h) => Digest::finalize(h).to_vec(),
-            Self::Blake2B384(h) => Digest::finalize(h).to_vec(),
-            Self::Blake2B512(h) => Digest::finalize(h).to_vec(),
-            Self::Blake2S224(h) => Digest::finalize(h).to_vec(),
-            Self::Blake2S256(h) => Digest::finalize(h).to_vec(),
+            Self::Blake2B224(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Blake2B256(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Blake2B384(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Blake2B512(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Blake2S224(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Blake2S256(h) => Ok(Digest::finalize(h).to_vec()),
             // see `update`: fully qualified inherent path for blake3
             Self::Blake3(h) => {
                 let hash = blake3::Hasher::finalize(&h);
-                hash.as_bytes().to_vec()
+                Ok(hash.as_bytes().to_vec())
             }
-            Self::Md5(h) => Digest::finalize(h).to_vec(),
-            Self::Ripemd128(h) => Digest::finalize(h).to_vec(),
-            Self::Ripemd160(h) => Digest::finalize(h).to_vec(),
-            Self::Ripemd256(h) => Digest::finalize(h).to_vec(),
-            Self::Ripemd320(h) => Digest::finalize(h).to_vec(),
-            Self::Sha1(h) => Digest::finalize(h).to_vec(),
-            Self::Sha2224(h) => Digest::finalize(h).to_vec(),
-            Self::Sha2256(h) => Digest::finalize(h).to_vec(),
-            Self::Sha2384(h) => Digest::finalize(h).to_vec(),
-            Self::Sha2512(h) => Digest::finalize(h).to_vec(),
-            Self::Sha2512224(h) => Digest::finalize(h).to_vec(),
-            Self::Sha2512256(h) => Digest::finalize(h).to_vec(),
-            Self::Sha3224(h) => Digest::finalize(h).to_vec(),
-            Self::Sha3256(h) => Digest::finalize(h).to_vec(),
-            Self::Sha3384(h) => Digest::finalize(h).to_vec(),
-            Self::Sha3512(h) => Digest::finalize(h).to_vec(),
+            Self::Md5(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Ripemd128(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Ripemd160(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Ripemd256(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Ripemd320(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Sha1(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Sha2224(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Sha2256(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Sha2384(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Sha2512(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Sha2512224(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Sha2512256(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Sha3224(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Sha3256(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Sha3384(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Sha3512(h) => Ok(Digest::finalize(h).to_vec()),
+            Self::Shake128(h) => {
+                let out_len = validate_output_len(codec, output_len)?;
+                Ok(xof_finalize(h, out_len))
+            }
+            Self::Shake256(h) => {
+                let out_len = validate_output_len(codec, output_len)?;
+                Ok(xof_finalize(h, out_len))
+            }
         }
     }
+}
+
+/// squeeze `out_len` XOF bytes into one pre-sized buffer
+///
+/// `ExtendableOutput::finalize_xof_into` reads the first `out_len` bytes of
+/// the XOF stream, so the read always starts at offset zero.
+fn xof_finalize<T: ExtendableOutput>(hasher: T, out_len: usize) -> Vec<u8> {
+    let mut out = vec![0u8; out_len];
+    ExtendableOutput::finalize_xof_into(hasher, &mut out);
+    out
 }
 
 impl fmt::Debug for Hasher {
@@ -298,6 +388,8 @@ impl fmt::Debug for Hasher {
             Self::Sha3256(_) => "Sha3256(..)",
             Self::Sha3384(_) => "Sha3384(..)",
             Self::Sha3512(_) => "Sha3512(..)",
+            Self::Shake128(_) => "Shake128(..)",
+            Self::Shake256(_) => "Shake256(..)",
         };
         f.write_str(name)
     }
@@ -441,9 +533,12 @@ impl fmt::Debug for Multihash {
 /// finalizes the streaming state, or validates the explicit digest, and
 /// produces the [`Multihash`].
 ///
-/// `try_build` validates the digest against the codec's exact output size
-/// and returns `Error::InvalidDigestLength` on a mismatch. A digest set with
-/// `with_hash` takes precedence over streamed data.
+/// `try_build` validates the digest against the codec's output policy and
+/// returns `Error::InvalidDigestLength` on a mismatch. Fixed-output codecs
+/// require their exact policy length. The XOF codecs `Shake128` and
+/// `Shake256` require an output length set through
+/// [`output_len`](Self::output_len) and accept `1..=MAX_HASH_LENGTH` bytes.
+/// A digest set with `with_hash` takes precedence over streamed data.
 ///
 /// # Examples
 ///
@@ -468,6 +563,9 @@ pub struct Builder {
 
     /// explicit hash value set by [`with_hash`](Self::with_hash)
     hash: Option<Vec<u8>>,
+
+    /// XOF digest output length set by [`output_len`](Self::output_len)
+    output_len: Option<usize>,
 
     /// base encoding requested through [`with_base_encoding`](Self::with_base_encoding)
     base_encoding: Option<Base>,
@@ -498,6 +596,7 @@ impl Builder {
             codec,
             hasher: None,
             hash: None,
+            output_len: None,
             base_encoding: None,
         })
     }
@@ -522,11 +621,43 @@ impl Builder {
         }
     }
 
+    /// set the XOF digest output length in bytes
+    ///
+    /// The extendable-output codecs `Shake128` and `Shake256` require an
+    /// explicit output length; [`try_build`](Self::try_build) and
+    /// [`try_build_encoded`](Self::try_build_encoded) return
+    /// `Error::OutputLenRequired` without one, and lengths outside
+    /// `1..=MAX_HASH_LENGTH` return `Error::OutputLenInvalid` before any
+    /// allocation or squeeze. Fixed-output codecs ignore this setting and
+    /// always produce their exact policy length.
+    ///
+    /// # XOF notes
+    ///
+    /// - A 32-byte `Shake256` digest is `shake-256` at length 32, not
+    ///   `sha3-256`: the two codecs name different algorithms with
+    ///   different sponge rates.
+    /// - A completed multihash digest cannot extend. Producing a different
+    ///   length for the same message requires a rehash through a fresh
+    ///   builder.
+    /// - XOF prefix consistency: the same input produces digest bytes in
+    ///   which a short output prefixes the long output. Two digest lengths
+    ///   still encode as distinct multihashes, because the encoded length
+    ///   prefix differs.
+    /// - Recommended minimum outputs are 32 bytes for `Shake128` and 64
+    ///   bytes for `Shake256`. The sponge capacity fixes the security
+    ///   strength of the XOF, while collision resistance stays bounded by
+    ///   the chosen output length.
+    pub const fn output_len(&mut self, output_len: usize) {
+        self.output_len = Some(output_len);
+    }
+
     /// set the hash data
     ///
-    /// The digest must match the exact output size of the codec;
-    /// [`try_build`](Self::try_build) validates it. A digest set with
-    /// `with_hash` takes precedence over data streamed with `update`.
+    /// The digest must match the output policy of the codec: the exact
+    /// output size for fixed-output codecs, or `1..=MAX_HASH_LENGTH` bytes
+    /// for the XOF codecs. [`try_build`](Self::try_build) validates it. A
+    /// digest set with `with_hash` takes precedence over data streamed with
+    /// `update`, and over an `output_len` setting.
     #[must_use]
     pub fn with_hash(mut self, hash: impl Into<Vec<u8>>) -> Self {
         self.hash = Some(hash.into());
@@ -552,9 +683,10 @@ impl Builder {
             codec,
             hasher,
             hash,
+            output_len,
             base_encoding,
         } = self;
-        let mh = build_multihash(codec, hasher, hash)?;
+        let mh = build_multihash(codec, hasher, hash, output_len)?;
         Ok(BaseEncoded::new(
             base_encoding.unwrap_or_else(Multihash::preferred_encoding),
             mh,
@@ -564,39 +696,45 @@ impl Builder {
     /// build the multihash
     ///
     /// A digest set with [`with_hash`](Self::with_hash) takes precedence over
-    /// data streamed with [`update`](Self::update). The digest is validated
-    /// against the codec's exact output length.
+    /// data streamed with [`update`](Self::update). The digest runs through
+    /// the codec's output policy: fixed-output codecs require their exact
+    /// policy length, and the XOF codecs accept `1..=MAX_HASH_LENGTH` bytes.
     ///
     /// # Errors
     ///
     /// Returns `Error::MissingHash` if no hash was set and no data was
-    /// streamed. Returns `Error::InvalidDigestLength` if the digest length
-    /// does not match the codec's fixed output size.
+    /// streamed. Returns `Error::InvalidDigestLength` if a fixed-output
+    /// digest length does not match the codec's policy. For the XOF codecs,
+    /// returns `Error::OutputLenRequired` when no output length was set for
+    /// streamed data, and `Error::OutputLenInvalid` for an output length
+    /// outside `1..=MAX_HASH_LENGTH`.
     pub fn try_build(self) -> Result<Multihash, Error> {
         let Self {
             codec,
             hasher,
             hash,
+            output_len,
             ..
         } = self;
-        build_multihash(codec, hasher, hash)
+        build_multihash(codec, hasher, hash, output_len)
     }
 }
 
 /// finish hash state into a validated multihash
 ///
 /// An explicit digest takes precedence over the streaming hasher. A missing
-/// digest fails with `Error::MissingHash`; a digest of the wrong length fails
-/// with `Error::InvalidDigestLength`.
+/// digest fails with `Error::MissingHash`. The digest then runs through the
+/// codec's output policy.
 fn build_multihash(
     codec: Codec,
     hasher: Option<Hasher>,
     hash: Option<Vec<u8>>,
+    output_len: Option<usize>,
 ) -> Result<Multihash, Error> {
     let hash = match hash {
         Some(hash) => hash,
         None => match hasher {
-            Some(hasher) => hasher.finalize(),
+            Some(hasher) => hasher.finalize(codec, output_len)?,
             None => return Err(Error::MissingHash),
         },
     };
@@ -608,10 +746,25 @@ fn build_multihash(
 mod tests {
     use super::*;
 
+    /// the output length these tests request for an XOF codec
+    ///
+    /// Fixed-output codecs ignore an output length, so the helper applies
+    /// only to the Shake arms.
+    fn xof_output_len(codec: Codec) -> Option<usize> {
+        match codec {
+            Codec::Shake128 => Some(32),
+            Codec::Shake256 => Some(64),
+            _ => None,
+        }
+    }
+
     /// build a multihash of `data` with `codec`, streaming the data
     fn streamed_multihash(codec: Codec, data: &[u8]) -> Multihash {
         let mut builder = Builder::new(codec).unwrap();
         builder.update(data);
+        if let Some(output_len) = xof_output_len(codec) {
+            builder.output_len(output_len);
+        }
         builder.try_build().unwrap()
     }
 
@@ -619,6 +772,9 @@ mod tests {
     fn streamed_encoded(codec: Codec, base: Base, data: &[u8]) -> EncodedMultihash {
         let mut builder = Builder::new(codec).unwrap();
         builder.update(data);
+        if let Some(output_len) = xof_output_len(codec) {
+            builder.output_len(output_len);
+        }
         builder
             .with_base_encoding(base)
             .try_build_encoded()
@@ -651,6 +807,8 @@ mod tests {
             Codec::Sha3256,
             Codec::Sha3384,
             Codec::Sha3512,
+            Codec::Shake128,
+            Codec::Shake256,
         ];
 
         let bases = vec![
@@ -899,26 +1057,41 @@ mod tests {
         assert_eq!(mh.as_ref(), hash.as_slice());
     }
 
-    /// a wrong-length digest is rejected for every codec
+    /// a wrong-length digest is rejected for a fixed-output codec, and an
+    /// out-of-policy digest is rejected for an XOF codec
     #[test]
     fn test_builder_with_hash_wrong_length() {
         for &codec in &HASH_CODECS {
-            let expected = digest_length(codec).unwrap();
-            let result = Builder::new(codec)
-                .unwrap()
-                .with_hash(vec![0u8; expected + 1])
-                .try_build();
-            assert!(
-                matches!(
-                    result,
-                    Err(Error::InvalidDigestLength {
-                        expected: e,
-                        actual: a,
-                        ..
-                    }) if e == expected && a == expected + 1
-                ),
-                "codec {codec:?} accepted a wrong-length digest"
-            );
+            match output_policy(codec) {
+                Some(OutputPolicy::Fixed(expected)) => {
+                    let result = Builder::new(codec)
+                        .unwrap()
+                        .with_hash(vec![0u8; expected + 1])
+                        .try_build();
+                    assert!(
+                        matches!(
+                            result,
+                            Err(Error::InvalidDigestLength {
+                                expected: e,
+                                actual: a,
+                                ..
+                            }) if e == expected && a == expected + 1
+                        ),
+                        "codec {codec:?} accepted a wrong-length digest"
+                    );
+                }
+                Some(OutputPolicy::Xof) => {
+                    let result = Builder::new(codec)
+                        .unwrap()
+                        .with_hash(Vec::new())
+                        .try_build();
+                    assert!(
+                        matches!(result, Err(Error::OutputLenInvalid { output_len: 0, .. })),
+                        "codec {codec:?} accepted an empty XOF digest"
+                    );
+                }
+                None => panic!("codec {codec:?} is in HASH_CODECS but has no policy"),
+            }
         }
     }
 
@@ -941,23 +1114,42 @@ mod tests {
         assert!(matches!(result, Err(Error::InvalidDigestLength { .. })));
     }
 
-    /// every codec streams to its exact digest policy length, and an
-    /// explicit digest of that length is accepted
+    /// every codec streams to its output policy length, and an explicit
+    /// digest of that length is accepted
     #[test]
     fn test_builder_stream_policy_lengths() {
         for &codec in &HASH_CODECS {
-            let mut builder = Builder::new(codec).unwrap();
-            builder.update(b"digest policy lengths");
-            let mh = builder.try_build().unwrap();
-            let expected = digest_length(codec).unwrap();
-            assert_eq!(mh.as_ref().len(), expected, "codec {codec:?}");
+            match output_policy(codec) {
+                Some(OutputPolicy::Xof) => {
+                    let output_len = xof_output_len(codec).unwrap();
+                    let mut builder = Builder::new(codec).unwrap();
+                    builder.update(b"digest policy lengths");
+                    builder.output_len(output_len);
+                    let mh = builder.try_build().unwrap();
+                    assert_eq!(mh.as_ref().len(), output_len, "codec {codec:?}");
 
-            let mh = Builder::new(codec)
-                .unwrap()
-                .with_hash(vec![0u8; expected])
-                .try_build()
-                .unwrap();
-            assert_eq!(mh.as_ref().len(), expected, "codec {codec:?}");
+                    let mh = Builder::new(codec)
+                        .unwrap()
+                        .with_hash(vec![0u8; output_len])
+                        .try_build()
+                        .unwrap();
+                    assert_eq!(mh.as_ref().len(), output_len, "codec {codec:?}");
+                }
+                Some(OutputPolicy::Fixed(expected)) => {
+                    let mut builder = Builder::new(codec).unwrap();
+                    builder.update(b"digest policy lengths");
+                    let mh = builder.try_build().unwrap();
+                    assert_eq!(mh.as_ref().len(), expected, "codec {codec:?}");
+
+                    let mh = Builder::new(codec)
+                        .unwrap()
+                        .with_hash(vec![0u8; expected])
+                        .try_build()
+                        .unwrap();
+                    assert_eq!(mh.as_ref().len(), expected, "codec {codec:?}");
+                }
+                None => panic!("codec {codec:?} is in HASH_CODECS but has no policy"),
+            }
         }
     }
 
@@ -1040,5 +1232,175 @@ mod tests {
         let mh = Multihash::try_from(bytes.as_ref()).unwrap();
         assert_eq!(mh.codec(), Codec::Sha2256);
         assert_eq!(mh.as_ref().len(), 16);
+    }
+
+    /// the codec constants list 25 supported and 10 safe codecs, and the
+    /// XOF output cap is the 16 MiB value that matches the `Varbytes`
+    /// decode cap in `multi-util`
+    #[test]
+    fn test_codec_constant_lengths() {
+        assert_eq!(HASH_CODECS.len(), 25);
+        assert_eq!(SAFE_HASH_CODECS.len(), 10);
+        assert_eq!(MAX_HASH_LENGTH, 16 * 1024 * 1024);
+        assert_eq!(HASH_CODECS[23], Codec::Shake128);
+        assert_eq!(HASH_CODECS[24], Codec::Shake256);
+        assert_eq!(SAFE_HASH_CODECS[8], Codec::Shake128);
+        assert_eq!(SAFE_HASH_CODECS[9], Codec::Shake256);
+    }
+
+    /// a streamed XOF build without an output length fails with
+    /// `OutputLenRequired`
+    #[test]
+    fn test_xof_output_len_required() {
+        for &codec in &[Codec::Shake128, Codec::Shake256] {
+            let mut builder = Builder::new(codec).unwrap();
+            builder.update(b"missing output length");
+            let result = builder.try_build();
+            assert!(
+                matches!(result, Err(Error::OutputLenRequired { .. })),
+                "codec {codec:?} built without an output length"
+            );
+
+            let mut builder = Builder::new(codec).unwrap();
+            builder.update(b"encoded without an output length");
+            let result = builder.try_build_encoded();
+            assert!(
+                matches!(result, Err(Error::OutputLenRequired { .. })),
+                "codec {codec:?} encoded without an output length"
+            );
+        }
+    }
+
+    /// a zero or over-limit XOF output length fails with `OutputLenInvalid`
+    /// before any allocation or squeeze
+    #[test]
+    fn test_xof_output_len_invalid() {
+        for &codec in &[Codec::Shake128, Codec::Shake256] {
+            for &output_len in &[0, MAX_HASH_LENGTH + 1] {
+                let mut builder = Builder::new(codec).unwrap();
+                builder.update(b"bad output length");
+                builder.output_len(output_len);
+                let result = builder.try_build();
+                assert!(
+                    matches!(
+                        result,
+                        Err(Error::OutputLenInvalid {
+                            output_len: requested,
+                            max,
+                            ..
+                        }) if requested == output_len && max == MAX_HASH_LENGTH
+                    ),
+                    "codec {codec:?} accepted output length {output_len}"
+                );
+            }
+        }
+    }
+
+    /// the minimum XOF output length of one byte builds
+    #[test]
+    fn test_xof_output_len_minimum() {
+        for &codec in &[Codec::Shake128, Codec::Shake256] {
+            let mut builder = Builder::new(codec).unwrap();
+            builder.update(b"one byte output");
+            builder.output_len(1);
+            let mh = builder.try_build().unwrap();
+            assert_eq!(mh.codec(), codec);
+            assert_eq!(mh.as_ref().len(), 1);
+        }
+    }
+
+    /// fixed-output codecs ignore an `output_len` setting
+    #[test]
+    fn test_fixed_output_ignores_output_len() {
+        for &output_len in &[0, 33, MAX_HASH_LENGTH + 1] {
+            let mut builder = Builder::new(Codec::Sha2256).unwrap();
+            builder.update(b"ignored output length");
+            builder.output_len(output_len);
+            let mh = builder.try_build().unwrap();
+            assert_eq!(mh.codec(), Codec::Sha2256);
+            assert_eq!(mh.as_ref().len(), 32);
+        }
+
+        let result = Builder::new(Codec::Sha2256)
+            .unwrap()
+            .with_hash(vec![0u8; 32])
+            .try_build();
+        assert!(result.is_ok());
+    }
+
+    /// XOF prefix consistency: a short streamed digest prefixes the long
+    /// digest of the same input, while the two multihashes still encode
+    /// differently
+    #[test]
+    fn test_xof_prefix_consistency() {
+        for (codec, short_len) in [(Codec::Shake128, 32usize), (Codec::Shake256, 64usize)] {
+            let data = b"prefix consistency";
+
+            let mut builder = Builder::new(codec).unwrap();
+            builder.update(data);
+            builder.output_len(short_len);
+            let short = builder.try_build().unwrap();
+
+            let mut builder = Builder::new(codec).unwrap();
+            builder.update(data);
+            builder.output_len(short_len * 2);
+            let long = builder.try_build().unwrap();
+
+            assert_eq!(short.codec(), long.codec());
+            assert_eq!(short.as_ref().len(), short_len);
+            assert_eq!(long.as_ref().len(), short_len * 2);
+            assert!(
+                long.as_ref().starts_with(short.as_ref()),
+                "codec {codec:?}: short digest is not a prefix of long digest"
+            );
+
+            let short_bytes: Vec<u8> = short.clone().into();
+            let long_bytes: Vec<u8> = long.clone().into();
+            assert_ne!(
+                short_bytes, long_bytes,
+                "codec {codec:?}: digest encodings matched across lengths"
+            );
+        }
+    }
+
+    /// a builder streaming an XOF stays `Send` and `Sync`, and the digest
+    /// built across a thread matches the one-shot digest
+    #[test]
+    fn test_xof_send_sync_streaming() {
+        fn assert_send<T: Send>() {}
+        fn assert_sync<T: Sync>() {}
+
+        assert_send::<Builder>();
+        assert_sync::<Builder>();
+
+        let mut builder = Builder::new(Codec::Shake128).unwrap();
+        builder.update(b"sent across threads");
+        builder.output_len(32);
+        let handle = std::thread::spawn(move || {
+            builder.update(b" and more");
+            builder.try_build().unwrap()
+        });
+        let streamed = handle.join().unwrap();
+
+        let mut one_shot = Builder::new(Codec::Shake128).unwrap();
+        one_shot.update(b"sent across threads and more");
+        one_shot.output_len(32);
+        let one_shot = one_shot.try_build().unwrap();
+
+        assert_eq!(streamed, one_shot);
+    }
+
+    /// an explicit XOF digest inside the `1..=MAX_HASH_LENGTH` policy
+    /// builds, and the digest takes precedence over an `output_len`
+    /// setting
+    #[test]
+    fn test_xof_with_hash_policy() {
+        let hash = vec![3u8; 8];
+        let mut builder = Builder::new(Codec::Shake256).unwrap();
+        builder.update(b"streamed but ignored");
+        builder.output_len(64);
+        let mh = builder.with_hash(hash.clone()).try_build().unwrap();
+        assert_eq!(mh.codec(), Codec::Shake256);
+        assert_eq!(mh.as_ref(), hash.as_slice());
     }
 }
