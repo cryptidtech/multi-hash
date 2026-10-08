@@ -9,10 +9,10 @@ use multi_util::CodecInfo;
 /// the output length these tests request for an XOF codec
 ///
 /// Fixed-output codecs ignore an output length, so the helper applies
-/// only to the Shake arms.
+/// only to the XOF arms, `Blake3`, `Shake128`, and `Shake256`.
 const fn xof_output_len(codec: Codec) -> Option<usize> {
     match codec {
-        Codec::Shake128 => Some(32),
+        Codec::Blake3 | Codec::Shake128 => Some(32),
         Codec::Shake256 => Some(64),
         _ => None,
     }

@@ -11,16 +11,19 @@ use std::hint::black_box;
 fn hash_bytes(codec: Codec, data: &[u8]) -> Multihash {
     let mut builder = Builder::new(codec).unwrap();
     builder.update(data);
+    if let Some(output_len) = xof_output_len(codec) {
+        builder.output_len(output_len);
+    }
     builder.try_build().unwrap()
 }
 
 /// the output length the computation bench requests for an XOF codec
 ///
 /// Fixed-output codecs ignore an output length, so the check applies
-/// only to the Shake arms.
+/// only to the XOF arms, `Blake3`, `Shake128`, and `Shake256`.
 const fn xof_output_len(codec: Codec) -> Option<usize> {
     match codec {
-        Codec::Shake128 => Some(32),
+        Codec::Blake3 | Codec::Shake128 => Some(32),
         Codec::Shake256 => Some(64),
         _ => None,
     }

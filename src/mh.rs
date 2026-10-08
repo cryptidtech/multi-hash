@@ -2,7 +2,9 @@
 //! Multihash implementation with support for multiple cryptographic hash algorithms
 //!
 //! This module provides the core [`Multihash`] type and [`Builder`] for creating
-//! self-describing hash digests.
+//! self-describing hash digests. The builder supports the fixed-output
+//! algorithms and the extendable-output algorithms `Blake3`, `Shake128`,
+//! and `Shake256`.
 
 use crate::Error;
 use core::fmt;
@@ -20,12 +22,20 @@ use typenum::consts::{U28, U32, U48, U64};
 /// The builder rejects XOF output lengths above this value before any
 /// allocation or squeeze. The value is 16 MiB, aligned with the 16 MiB
 /// decode cap that `Varbytes` in `multi-util` enforces.
+///
+/// # Examples
+///
+/// ```
+/// use multi_hash::MAX_HASH_LENGTH;
+///
+/// assert_eq!(MAX_HASH_LENGTH, 16 * 1024 * 1024);
+/// ```
 pub const MAX_HASH_LENGTH: usize = 16 * 1024 * 1024;
 
 /// the hash codecs currently supported
 ///
-/// The two extendable-output codecs, `Shake128` and `Shake256`, end the
-/// list; a builder for them requires an explicit digest output length
+/// `Shake128` and `Shake256` end the list. The XOF codecs `Blake3`,
+/// `Shake128`, and `Shake256` require an explicit digest output length
 /// through [`Builder::output_len`].
 pub const HASH_CODECS: [Codec; 25] = [
     Codec::Blake2B224,
@@ -55,7 +65,7 @@ pub const HASH_CODECS: [Codec; 25] = [
     Codec::Shake256,
 ];
 
-/// the safe hash codecs current supported
+/// the safe hash codecs currently supported
 pub const SAFE_HASH_CODECS: [Codec; 10] = [
     Codec::Blake2B256,
     Codec::Blake2B384,
@@ -81,6 +91,17 @@ pub const SAFE_HASH_CODECS: [Codec; 10] = [
 /// SP 800-131A Rev. 3 draft deprecates SHA-1 and the 224-bit hash functions
 /// through 2030 and disallows them after 2030. Applications that must avoid
 /// the deprecated functions can use [`SAFE_FIPS_CODECS`].
+///
+/// # Examples
+///
+/// ```
+/// use multi_hash::FIPS_CODECS;
+/// use multi_codec::Codec;
+///
+/// assert!(FIPS_CODECS.contains(&Codec::Sha2256));
+/// assert!(FIPS_CODECS.contains(&Codec::Shake256));
+/// assert!(!FIPS_CODECS.contains(&Codec::Blake3));
+/// ```
 #[cfg(feature = "fips")]
 pub const FIPS_CODECS: [Codec; 13] = [
     Codec::Sha1,
@@ -107,6 +128,17 @@ pub const FIPS_CODECS: [Codec; 13] = [
 /// does not fall under the 224-bit restrictions, but it is excluded here to
 /// apply the same strongest-selection principle as [`SAFE_HASH_CODECS`],
 /// which omits the reduced-security variants of each family.
+///
+/// # Examples
+///
+/// ```
+/// use multi_hash::SAFE_FIPS_CODECS;
+/// use multi_codec::Codec;
+///
+/// assert!(SAFE_FIPS_CODECS.contains(&Codec::Sha3256));
+/// assert!(SAFE_FIPS_CODECS.contains(&Codec::Shake256));
+/// assert!(!SAFE_FIPS_CODECS.contains(&Codec::Sha1));
+/// ```
 #[cfg(feature = "fips")]
 pub const SAFE_FIPS_CODECS: [Codec; 8] = [
     Codec::Sha2256,
@@ -127,15 +159,16 @@ pub type EncodedMultihash = BaseEncoded<Multihash, DetectedEncoder>;
 
 /// the digest output policy of a hash codec in [`HASH_CODECS`]
 ///
-/// Fixed-output codecs produce one exact digest length. The XOF codecs,
-/// `Shake128` and `Shake256`, produce a length the caller chooses within
-/// `1..=MAX_HASH_LENGTH` bytes.
+/// Fixed-output codecs produce one exact digest length. The XOF codecs
+/// `Blake3`, `Shake128`, and `Shake256` produce a length the caller
+/// chooses within `1..=MAX_HASH_LENGTH` bytes.
 #[derive(Clone, Copy)]
 enum OutputPolicy {
     /// exact digest length in bytes
     Fixed(usize),
 
-    /// extendable-output codec; the caller sets the digest length
+    /// extendable-output codec. The caller sets the digest length
+    /// through [`Builder::output_len`]
     Xof,
 }
 
@@ -147,7 +180,7 @@ const OUTPUT_POLICIES: [OutputPolicy; 25] = [
     OutputPolicy::Fixed(64), // Blake2B512
     OutputPolicy::Fixed(28), // Blake2S224
     OutputPolicy::Fixed(32), // Blake2S256
-    OutputPolicy::Fixed(32), // Blake3
+    OutputPolicy::Xof,       // Blake3
     OutputPolicy::Fixed(16), // Md5
     OutputPolicy::Fixed(16), // Ripemd128
     OutputPolicy::Fixed(20), // Ripemd160
@@ -240,7 +273,7 @@ enum Hasher {
     Blake2S224(blake2::Blake2s<U28>),
     /// blake2s with a 256-bit digest
     Blake2S256(blake2::Blake2s<U32>),
-    /// blake3 with a 256-bit digest
+    /// blake3 extendable-output function
     ///
     /// `blake3::Hasher` is roughly 2 KB, so its arm is boxed to keep the
     /// other arms, and every [`Builder`] value, small
@@ -328,7 +361,7 @@ impl Hasher {
             Self::Blake2B512(h) => Digest::update(h, data),
             Self::Blake2S224(h) => Digest::update(h, data),
             Self::Blake2S256(h) => Digest::update(h, data),
-            // `update` and `finalize` go through the fully qualified inherent
+            // the streaming calls go through the fully qualified inherent
             // path: blake3 also supplies trait methods of the same names
             Self::Blake3(h) => {
                 blake3::Hasher::update(h, data);
@@ -370,9 +403,16 @@ impl Hasher {
             Self::Blake2S224(h) => Ok(Digest::finalize(h).to_vec()),
             Self::Blake2S256(h) => Ok(Digest::finalize(h).to_vec()),
             // see `update`: fully qualified inherent path for blake3
+            //
+            // `finalize_xof` gives a fresh reader at stream offset zero, so
+            // the digest is always the first `out_len` bytes of the BLAKE3
+            // output stream. A 32-byte request matches the classic fixed
+            // `blake3` digest
             Self::Blake3(h) => {
-                let hash = blake3::Hasher::finalize(&h);
-                Ok(hash.as_bytes().to_vec())
+                let out_len = validate_output_len(codec, output_len)?;
+                let mut out = vec![0u8; out_len];
+                blake3::Hasher::finalize_xof(&h).fill(&mut out);
+                Ok(out)
             }
             Self::Md5(h) => Ok(Digest::finalize(h).to_vec()),
             Self::Ripemd128(h) => Ok(Digest::finalize(h).to_vec()),
@@ -585,8 +625,8 @@ impl fmt::Debug for Multihash {
 ///
 /// `try_build` validates the digest against the codec's output policy and
 /// returns `Error::InvalidDigestLength` on a mismatch. Fixed-output codecs
-/// require their exact policy length. The XOF codecs `Shake128` and
-/// `Shake256` require an output length set through
+/// require their exact policy length. The XOF codecs `Blake3`, `Shake128`,
+/// and `Shake256` require an output length set through
 /// [`output_len`](Self::output_len) and accept `1..=MAX_HASH_LENGTH` bytes.
 /// A digest set with `with_hash` takes precedence over streamed data.
 ///
@@ -654,8 +694,22 @@ impl Builder {
     /// feed data to the streaming hasher
     ///
     /// The internal hasher is created lazily on the first call. Call `update`
-    /// repeatedly to hash data in chunks; the streamed digest is finalized by
+    /// repeatedly to hash data in chunks. The streamed digest is finalized by
     /// [`try_build`](Self::try_build).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use multi_hash::Builder;
+    /// use multi_codec::Codec;
+    ///
+    /// let mut builder = Builder::new(Codec::Sha2256).unwrap();
+    /// builder.update(b"data chunk one");
+    /// builder.update(b"data chunk two");
+    /// let multihash = builder.try_build().unwrap();
+    ///
+    /// assert_eq!(multihash.as_ref().len(), 32);
+    /// ```
     pub fn update(&mut self, data: impl AsRef<[u8]>) {
         // `Builder::new` accepts only codecs in `HASH_CODECS`, for which
         // `Hasher::new` always produces a hasher
@@ -673,13 +727,27 @@ impl Builder {
 
     /// set the XOF digest output length in bytes
     ///
-    /// The extendable-output codecs `Shake128` and `Shake256` require an
-    /// explicit output length; [`try_build`](Self::try_build) and
+    /// The extendable-output codecs `Blake3`, `Shake128`, and `Shake256`
+    /// require an explicit output length. [`try_build`](Self::try_build) and
     /// [`try_build_encoded`](Self::try_build_encoded) return
-    /// `Error::OutputLenRequired` without one, and lengths outside
+    /// `Error::OutputLenRequired` without one. Lengths outside
     /// `1..=MAX_HASH_LENGTH` return `Error::OutputLenInvalid` before any
     /// allocation or squeeze. Fixed-output codecs ignore this setting and
     /// always produce their exact policy length.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use multi_hash::Builder;
+    /// use multi_codec::Codec;
+    ///
+    /// let mut builder = Builder::new(Codec::Blake3).unwrap();
+    /// builder.update(b"hello world");
+    /// builder.output_len(32);
+    /// let multihash = builder.try_build().unwrap();
+    ///
+    /// assert_eq!(multihash.as_ref().len(), 32);
+    /// ```
     ///
     /// # XOF notes
     ///
@@ -693,10 +761,11 @@ impl Builder {
     ///   which a short output prefixes the long output. Two digest lengths
     ///   still encode as distinct multihashes, because the encoded length
     ///   prefix differs.
-    /// - Recommended minimum outputs are 32 bytes for `Shake128` and 64
-    ///   bytes for `Shake256`. The sponge capacity fixes the security
-    ///   strength of the XOF, while collision resistance stays bounded by
-    ///   the chosen output length.
+    /// - Recommended minimum outputs are 32 bytes for `Blake3` and
+    ///   `Shake128`, and 64 bytes for `Shake256`. The sponge capacity fixes
+    ///   the security strength of the XOF, while collision resistance stays
+    ///   bounded by the chosen output length. A `Blake3` output longer than
+    ///   32 bytes gives no additional collision resistance.
     pub const fn output_len(&mut self, output_len: usize) {
         self.output_len = Some(output_len);
     }
@@ -799,10 +868,10 @@ mod tests {
     /// the output length these tests request for an XOF codec
     ///
     /// Fixed-output codecs ignore an output length, so the helper applies
-    /// only to the Shake arms.
+    /// only to the XOF arms, `Blake3`, `Shake128`, and `Shake256`.
     fn xof_output_len(codec: Codec) -> Option<usize> {
         match codec {
-            Codec::Shake128 => Some(32),
+            Codec::Blake3 | Codec::Shake128 => Some(32),
             Codec::Shake256 => Some(64),
             _ => None,
         }
@@ -1209,6 +1278,9 @@ mod tests {
         for &codec in &[Codec::Sha2256, Codec::Blake3, Codec::Sha3384] {
             let mut original = Builder::new(codec).unwrap();
             original.update(b"consumed");
+            if let Some(output_len) = xof_output_len(codec) {
+                original.output_len(output_len);
+            }
             let snapshot = original.clone();
             let mh1 = original.try_build().unwrap();
             let mh2 = snapshot.try_build().unwrap();
@@ -1302,7 +1374,7 @@ mod tests {
     /// `OutputLenRequired`
     #[test]
     fn test_xof_output_len_required() {
-        for &codec in &[Codec::Shake128, Codec::Shake256] {
+        for &codec in &[Codec::Blake3, Codec::Shake128, Codec::Shake256] {
             let mut builder = Builder::new(codec).unwrap();
             builder.update(b"missing output length");
             let result = builder.try_build();
@@ -1325,7 +1397,7 @@ mod tests {
     /// before any allocation or squeeze
     #[test]
     fn test_xof_output_len_invalid() {
-        for &codec in &[Codec::Shake128, Codec::Shake256] {
+        for &codec in &[Codec::Blake3, Codec::Shake128, Codec::Shake256] {
             for &output_len in &[0, MAX_HASH_LENGTH + 1] {
                 let mut builder = Builder::new(codec).unwrap();
                 builder.update(b"bad output length");
@@ -1349,7 +1421,7 @@ mod tests {
     /// the minimum XOF output length of one byte builds
     #[test]
     fn test_xof_output_len_minimum() {
-        for &codec in &[Codec::Shake128, Codec::Shake256] {
+        for &codec in &[Codec::Blake3, Codec::Shake128, Codec::Shake256] {
             let mut builder = Builder::new(codec).unwrap();
             builder.update(b"one byte output");
             builder.output_len(1);
@@ -1383,7 +1455,11 @@ mod tests {
     /// differently
     #[test]
     fn test_xof_prefix_consistency() {
-        for (codec, short_len) in [(Codec::Shake128, 32usize), (Codec::Shake256, 64usize)] {
+        for (codec, short_len) in [
+            (Codec::Blake3, 32usize),
+            (Codec::Shake128, 32usize),
+            (Codec::Shake256, 64usize),
+        ] {
             let data = b"prefix consistency";
 
             let mut builder = Builder::new(codec).unwrap();

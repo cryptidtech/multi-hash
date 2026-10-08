@@ -11,7 +11,7 @@
 
 Rust implementation of the [Multihash](https://github.com/multiformats/multihash) specification for self-describing cryptographic hash digests.
 
-Multihash is a self-describing format. It pairs a hash algorithm identifier (a multicodec tag) with the raw digest bytes. This lets systems switch hash algorithms without a break in compatibility. The crate gives 23 supported hash algorithms, type-safe wrappers, serde integration, and multibase encoding via the `multi-util` crate stack.
+Multihash is a self-describing format. It pairs a hash algorithm identifier (a multicodec tag) with the raw digest bytes. This lets systems switch hash algorithms without a break in compatibility. The crate gives 25 supported hash algorithms, type-safe wrappers, serde integration, and multibase encoding via the `multi-util` crate stack. The codec set includes three extendable-output functions (XOF): `Blake3`, `Shake128`, and `Shake256`. You choose the digest length of an XOF with the builder, from 1 to `MAX_HASH_LENGTH` bytes (16 MiB).
 
 ## Table of Contents
 
@@ -21,6 +21,7 @@ Multihash is a self-describing format. It pairs a hash algorithm identifier (a m
 - [Usage](#usage)
   - [Computing a Hash](#computing-a-hash)
   - [Building from an Existing Digest](#building-from-an-existing-digest)
+  - [Extendable-Output Functions](#extendable-output-functions)
   - [Encoding and Decoding](#encoding-and-decoding)
   - [Base Encoding](#base-encoding)
   - [Converting to EncodedMultihash](#converting-to-encodedmultihash)
@@ -36,7 +37,7 @@ Multihash is a self-describing format. It pairs a hash algorithm identifier (a m
 
 ## Features
 
-- 23 hash algorithms. SHA1, SHA2 family, SHA3 family, Blake2, Blake3, MD5, RIPEMD.
+- 25 hash algorithms. SHA1, SHA2 family, SHA3 family, Blake2, Blake3, MD5, RIPEMD. `Blake3`, `Shake128`, and `Shake256` are extendable-output functions (XOF) with a caller-chosen digest length.
 - Builder pattern. A fluent API to create multihashes from raw data or existing digests.
 - Multibase encoding. The `EncodedMultihash` smart pointer gives a base-encoded string representation via `BaseEncoded` from `multi-util`.
 - Serde support. JSON gives the codec name string. Binary gives the varint bytes. The `serde` feature gates it.
@@ -73,10 +74,12 @@ MSRV: Rust 1.85 (Edition 2024).
 | Blake2b-384 | `Blake2B384` | 48 bytes |
 | Blake2b-512 | `Blake2B512` | 64 bytes |
 | Blake2s-256 | `Blake2S256` | 32 bytes |
-| Blake3 | `Blake3` | 32 bytes |
+| Blake3 | `Blake3` | Caller-chosen, 1 to `MAX_HASH_LENGTH` bytes (recommended 32) |
 | SHA3-256 | `Sha3256` | 32 bytes |
 | SHA3-384 | `Sha3384` | 48 bytes |
 | SHA3-512 | `Sha3512` | 64 bytes |
+| Shake128 | `Shake128` | Caller-chosen, 1 to `MAX_HASH_LENGTH` bytes (recommended 32) |
+| Shake256 | `Shake256` | Caller-chosen, 1 to `MAX_HASH_LENGTH` bytes (recommended 64) |
 
 See [`SAFE_HASH_CODECS`](https://docs.rs/multi-hash/latest/multi_hash/constant.SAFE_HASH_CODECS.html) for the constant array.
 
@@ -100,7 +103,9 @@ See [`SAFE_HASH_CODECS`](https://docs.rs/multi-hash/latest/multi_hash/constant.S
 | RIPEMD-320 | `Ripemd320` | 40 bytes |
 | SHA3-224 | `Sha3224` | 28 bytes |
 
-See [`HASH_CODECS`](https://docs.rs/multi-hash/latest/multi_hash/constant.HASH_CODECS.html) for the constant array of all 23 supported codecs.
+See [`HASH_CODECS`](https://docs.rs/multi-hash/latest/multi_hash/constant.HASH_CODECS.html) for the constant array of all 25 supported codecs.
+
+The extendable-output functions (`Blake3`, `Shake128`, and `Shake256`) accept a caller-chosen digest length from 1 to `MAX_HASH_LENGTH` bytes (16 MiB), which you set with `Builder::output_len()`.
 
 ## Usage
 
@@ -134,6 +139,47 @@ let multihash = Builder::new(Codec::Sha2256)
     .try_build()
     .unwrap();
 ```
+
+### Extendable-Output Functions
+
+`Blake3`, `Shake128`, and `Shake256` are extendable-output functions (XOF). They produce a digest of any length from 1 to `MAX_HASH_LENGTH` bytes. Set the length with `output_len()`. A streamed build of an XOF codec fails with `Error::OutputLenRequired` without a length:
+
+```rust
+use multi_hash::{Builder, Error};
+use multi_codec::Codec;
+
+// Stream data through SHAKE128 and squeeze 64 digest bytes
+let mut shake = Builder::new(Codec::Shake128).unwrap();
+shake.update(b"hello world");
+shake.output_len(64);
+let shake_digest = shake.try_build().unwrap();
+assert_eq!(shake_digest.as_ref().len(), 64);
+
+// BLAKE3 uses the same length policy. A 32-byte digest equals the classic BLAKE3 digest.
+let mut blake = Builder::new(Codec::Blake3).unwrap();
+blake.update(b"hello world");
+blake.output_len(32);
+let blake_digest = blake.try_build().unwrap();
+assert_eq!(blake_digest.as_ref().len(), 32);
+
+// A streamed build of an XOF codec fails without an output length
+let mut builder = Builder::new(Codec::Shake256).unwrap();
+builder.update(b"hello world");
+match builder.try_build() {
+    Err(Error::OutputLenRequired { codec }) => {
+        eprintln!("Set output_len() for {:?} with a length from 1 to MAX_HASH_LENGTH", codec);
+    }
+    Err(e) => eprintln!("Other error: {}", e),
+    Ok(_) => unreachable!(),
+}
+```
+
+You can also wrap an existing XOF digest. `with_hash()` accepts any digest length from 1 to `MAX_HASH_LENGTH` bytes for an XOF codec. Notes on XOF digests:
+
+- Prefix consistency. For the same input, the first N bytes of a long digest equal the shorter digest. Two different lengths still encode as distinct multihashes, because the encoded length prefix differs.
+- No extension of a built digest. A built `Multihash` digest cannot extend to a longer digest. A different length needs a rehash through a fresh builder.
+- Different algorithms. A 32-byte `Shake256` digest is not a `Sha3256` digest. A 32-byte `Blake3` digest is not a BLAKE2b-256 digest. The codecs name different algorithms.
+- Length and security. The sponge capacity fixes the security strength of the XOF. The chosen output length bounds collision resistance. Use at least 32 bytes for `Blake3` and `Shake128`, and at least 64 bytes for `Shake256`. Longer BLAKE3 outputs give no additional security.
 
 ### Encoding and Decoding
 
@@ -234,7 +280,7 @@ assert_eq!(doc, deserialized);
 
 ### Error Handling
 
-All conversion and builder errors return `Result` with a structured `Error` enum:
+All conversion and builder errors return `Result` with a structured `Error` enum. `Builder::new()` is fallible and returns `Error::UnsupportedHash` for an unknown codec:
 
 ```rust
 use multi_hash::{Builder, Error};
@@ -259,6 +305,41 @@ match Builder::new(Codec::Sha2256).unwrap().try_build() {
 }
 ```
 
+A streamed build of an XOF codec needs an output length:
+
+```rust
+use multi_hash::{Builder, Error};
+use multi_codec::Codec;
+
+// Handle a streamed build of an XOF codec without an output length
+let mut builder = Builder::new(Codec::Shake128).unwrap();
+builder.update(b"some data");
+match builder.try_build() {
+    Err(Error::OutputLenRequired { codec }) => {
+        eprintln!("Set output_len() from 1 to MAX_HASH_LENGTH for {:?}", codec);
+    }
+    Err(e) => eprintln!("Other error: {}", e),
+    Ok(_) => unreachable!(),
+}
+
+// Handle an XOF output length outside the 1..=MAX_HASH_LENGTH policy
+let mut builder = Builder::new(Codec::Shake256).unwrap();
+builder.update(b"some data");
+builder.output_len(0);
+match builder.try_build() {
+    Err(Error::OutputLenInvalid { codec, output_len, max }) => {
+        eprintln!(
+            "Algorithm {:?} rejects a length of {}. Use a length from 1 to {}",
+            codec, output_len, max
+        );
+    }
+    Err(e) => eprintln!("Other error: {}", e),
+    Ok(_) => unreachable!(),
+}
+```
+
+The length check runs before any allocation or squeeze.
+
 ### Type-Safe Newtypes
 
 For more type safety, use the newtype wrappers:
@@ -281,7 +362,7 @@ assert_eq!(algo.code(), 0x12);
 
 ## Testing
 
-The crate has 110 tests across unit, integration, property-based, security, and doc-test suites:
+The crate has 171 tests: 130 test functions and 41 doc examples. The suites cover unit, integration, property-based, security, XOF, FIPS, and doc-test paths:
 
 ```bash
 # Run all tests
@@ -292,6 +373,10 @@ cargo test --test edge_case_tests
 cargo test --test integration_tests
 cargo test --test proptest_tests
 cargo test --test security_tests
+cargo test --test xof_tests
+
+# Run the FIPS tests, which need the `fips` feature
+cargo test --test fips_tests --features fips
 
 # Run benchmarks
 cargo bench
@@ -309,6 +394,14 @@ CI collects coverage with `cargo-llvm-cov` and uploads the result to Codecov.
 ## Feature Flags
 
 - `serde` (default). Enables serde serialization and deserialization. When on, `Multihash` implements `Serialize` and `Deserialize`. Human-readable formats give the codec name and the hex digest. Binary formats give the varint bytes.
+- `fips` (additive, off by default). Exports `FIPS_CODECS` (13 codecs) and `SAFE_FIPS_CODECS` (8 codecs). They list the NIST FIPS approved hash algorithms. `SAFE_FIPS_CODECS` omits SHA-1 and the 224-bit algorithms that SP 800-131A restricts. `Blake2`, `Blake3`, `Md5`, and the RIPEMD codecs are not FIPS approved. SHA-1 is verification-only under NIST SP 800-131A Rev. 2. The SP 800-131A Rev. 3 draft deprecates SHA-1 and the 224-bit hashes through 2030 and disallows them after 2030.
+
+The `fips` feature composes with the default `serde` feature:
+
+```toml
+[dependencies]
+multi-hash = { version = "1.0", features = ["fips"] }
+```
 
 ### Disabling Default Features
 
@@ -325,6 +418,7 @@ multi-hash = { version = "1.0", default-features = false }
 - Hash computation uses vetted cryptographic libraries from the RustCrypto ecosystem.
 - `impl subtle::ConstantTimeEq for Multihash` is available for timing-sensitive comparisons.
 - The `Varbytes` decode path enforces a decoded-size cap (16 MiB) and buffer-length checks. This mitigates CWE-400 and CWE-125.
+- The builder enforces the same 16 MiB cap through `MAX_HASH_LENGTH`. It checks an XOF output length against `1..=MAX_HASH_LENGTH` before it allocates or squeezes. The builder validates the digest length at `try_build()` time.
 
 See [SECURITY.md](SECURITY.md) for the full security policy.
 

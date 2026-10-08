@@ -43,7 +43,9 @@ pub enum Error {
     ///
     /// # Resolution
     ///
-    /// Call `Builder::with_hash()` to set the hash digest before calling `build()`.
+    /// Call `Builder::with_hash()` to set a digest computed elsewhere. Call
+    /// `Builder::update()` to stream data. One of them must run before
+    /// `try_build()`.
     ///
     /// # Examples
     ///
@@ -56,7 +58,7 @@ pub enum Error {
     #[error(
         "Missing hash data\n\
              The multihash builder requires hash digest data.\n\
-             Call Builder::with_hash() before build()."
+             Call with_hash() or update() before try_build()."
     )]
     MissingHash,
 
@@ -97,7 +99,7 @@ pub enum Error {
 
     /// Invalid hash digest length
     ///
-    /// The provided hash digest length doesn't match the expected output
+    /// The provided hash digest length does not match the expected output
     /// size for the specified hash algorithm.
     ///
     /// # Context
@@ -132,8 +134,8 @@ pub enum Error {
     /// XOF output length required
     ///
     /// The builder tried to finalize an extendable-output codec
-    /// (`Shake128` or `Shake256`) without an output length set through
-    /// `Builder::output_len()`.
+    /// (`Blake3`, `Shake128`, or `Shake256`) without an output length set
+    /// through `Builder::output_len()`.
     ///
     /// # Context
     ///

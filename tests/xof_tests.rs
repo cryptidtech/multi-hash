@@ -1,14 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
-//! XOF tests for the `Shake128` and `Shake256` codecs
+//! XOF tests for the extendable-output codecs `Blake3`, `Shake128`, and
+//! `Shake256`
 //!
-//! The known-answer vectors below come from the Keccak team FIPS 202 KAT
-//! files `ShortMsgKAT_SHAKE128.txt` and `ShortMsgKAT_SHAKE256.txt` in the
-//! XKCP repository at <https://github.com/XKCP/XKCP>. Each file's
+//! The SHAKE known-answer vectors below come from the Keccak team FIPS 202
+//! KAT files `ShortMsgKAT_SHAKE128.txt` and `ShortMsgKAT_SHAKE256.txt` in
+//! the XKCP repository at <https://github.com/XKCP/XKCP>. Each file's
 //! `Squeezed` field supplies a 512-byte output stream; the constants here
-//! are the first 128 bytes of that field. SHAKE output is
-//! prefix-consistent: the same input squeezed to a short length is a
-//! prefix of the same input squeezed to a longer length, so any prefix up
-//! to the full 128 bytes is a valid expected value for the same message.
+//! are the first 128 bytes of that field. The BLAKE3 known-answer vectors
+//! are 32-byte digests; the empty-message and `abc` digests are the
+//! official BLAKE3 known-answer values, and the `blake3` message has no
+//! published vector, so the test asserts its digest against the one-shot
+//! `blake3::Hasher::finalize` digest of the same message. All three
+//! codecs have prefix-consistent output: the same input squeezed to a
+//! short length is a prefix of the same input squeezed to a longer
+//! length, so any prefix up to the full stored bytes is a valid expected
+//! value for the same message. A 32-byte BLAKE3 digest stays a BLAKE3
+//! digest: it is no BLAKE2b-256 value, because the codecs are distinct
+//! algorithms.
 #![allow(clippy::unreadable_literal)]
 
 use multi_base::Base;
@@ -50,8 +58,8 @@ struct KatVector {
     expected: &'static str,
 }
 
-/// the four known-answer vectors: `{Shake128, Shake256}` each over the
-/// empty message and the single byte 0xCC
+/// the four SHAKE known-answer vectors: `{Shake128, Shake256}` each over
+/// the empty message and the single byte 0xCC
 const KAT_VECTORS: [KatVector; 4] = [
     KatVector {
         codec: Codec::Shake128,
@@ -75,13 +83,35 @@ const KAT_VECTORS: [KatVector; 4] = [
     },
 ];
 
+/// the BLAKE3 known-answer vectors: the message and its 32-byte digest, as
+/// lowercase hex
+///
+/// The empty-message and `abc` digests are official BLAKE3 known-answer
+/// values. The `blake3` message has no published vector; the test asserts
+/// each BLAKE3 digest against the one-shot `blake3::Hasher::finalize`
+/// digest of the same message.
+const BLAKE3_KAT_VECTORS: [(&[u8], &str); 3] = [
+    (
+        b"",
+        "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+    ),
+    (
+        b"abc",
+        "6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85",
+    ),
+    (
+        b"blake3",
+        "aca4f0133c931ea1d8420a3a9b96d7a15ef245b1755224d80db917cee17c86c7",
+    ),
+];
+
 /// the output length these tests request for an XOF codec
 ///
 /// Fixed-output codecs ignore an output length, so the helper applies
-/// only to the Shake arms.
+/// only to the XOF arms, `Blake3`, `Shake128`, and `Shake256`.
 const fn xof_output_len(codec: Codec) -> Option<usize> {
     match codec {
-        Codec::Shake128 => Some(32),
+        Codec::Blake3 | Codec::Shake128 => Some(32),
         Codec::Shake256 => Some(64),
         _ => None,
     }
@@ -104,8 +134,8 @@ fn streamed_multihash(codec: Codec, message: &[u8], output_len: usize) -> Multih
     builder.try_build().unwrap()
 }
 
-/// each KAT vector matches at short, medium, and full digest lengths, with
-/// the message streamed through the builder in chunks
+/// each SHAKE KAT vector matches at short, medium, and full digest
+/// lengths, with the message streamed through the builder in chunks
 #[test]
 fn test_kat_vectors_at_multiple_lengths() {
     for vector in &KAT_VECTORS {
@@ -141,13 +171,44 @@ fn test_kat_vectors_at_multiple_lengths() {
     }
 }
 
+/// each BLAKE3 known-answer vector matches the streamed builder at 1, 8,
+/// and 32 digest bytes, and the 32-byte digests match the one-shot
+/// `blake3::Hasher::finalize` digests of the same messages
+#[test]
+fn test_blake3_kat_vectors() {
+    for (message, expected) in &BLAKE3_KAT_VECTORS {
+        let expected = hex::decode(expected).unwrap();
+
+        for &output_len in &[1usize, 8, 32] {
+            let mh = streamed_multihash(Codec::Blake3, message, output_len);
+            assert_eq!(
+                mh.codec(),
+                Codec::Blake3,
+                "codec of the {output_len}-byte digest"
+            );
+            assert_eq!(
+                mh.as_ref(),
+                &expected[..output_len],
+                "BLAKE3 of {message:02x?} squeezed to {output_len} bytes"
+            );
+        }
+
+        let finalized = blake3::Hasher::new().update(message).finalize();
+        assert_eq!(
+            expected.as_slice(),
+            finalized.as_bytes(),
+            "BLAKE3 of {message:02x?} against the one-shot digest"
+        );
+    }
+}
+
 /// streaming the same input in chunks produces the same multihash as one
 /// full update, at several digest lengths
 #[test]
 fn test_streaming_matches_one_shot() {
     let message: &[u8] = b"the same input must hash to the same digest however it is chunked";
 
-    for &codec in &[Codec::Shake128, Codec::Shake256] {
+    for &codec in &[Codec::Blake3, Codec::Shake128, Codec::Shake256] {
         for &output_len in &[32usize, 64, 100] {
             let mut builder = Builder::new(codec).unwrap();
             builder.update(&message[..12]);
@@ -164,12 +225,12 @@ fn test_streaming_matches_one_shot() {
 }
 
 /// the digest of a shorter squeeze is a prefix of the digest of a longer
-/// squeeze of the same input, for both codecs
+/// squeeze of the same input, for each codec
 #[test]
 fn test_digest_prefix_consistency() {
     let message: &[u8] = b"prefix consistency across squeeze lengths";
 
-    for &codec in &[Codec::Shake128, Codec::Shake256] {
+    for &codec in &[Codec::Blake3, Codec::Shake128, Codec::Shake256] {
         let lengths = [1usize, 16, 32, 64, 128];
         let digests: Vec<Multihash> = lengths
             .iter()
@@ -193,7 +254,7 @@ fn test_digest_prefix_consistency() {
 fn test_distinct_lengths_distinct_encodings() {
     let message: &[u8] = b"the digest length is part of the identity of a multihash";
 
-    for &codec in &[Codec::Shake128, Codec::Shake256] {
+    for &codec in &[Codec::Blake3, Codec::Shake128, Codec::Shake256] {
         let short = streamed_multihash(codec, message, 32);
         let long = streamed_multihash(codec, message, 64);
         assert!(
@@ -223,7 +284,7 @@ fn test_distinct_lengths_distinct_encodings() {
 /// a built XOF multihash roundtrips through its binary encoding
 #[test]
 fn test_binary_roundtrip() {
-    for &codec in &[Codec::Shake128, Codec::Shake256] {
+    for &codec in &[Codec::Blake3, Codec::Shake128, Codec::Shake256] {
         for &output_len in &[32usize, 64, 128] {
             let mh = streamed_multihash(codec, b"binary roundtrip", output_len);
 
@@ -245,7 +306,7 @@ fn test_multibase_roundtrip() {
         Base::Base64,
     ];
 
-    for &codec in &[Codec::Shake128, Codec::Shake256] {
+    for &codec in &[Codec::Blake3, Codec::Shake128, Codec::Shake256] {
         let output_len = xof_output_len(codec).unwrap();
 
         for &base in &bases {
@@ -272,7 +333,7 @@ fn test_multibase_roundtrip() {
 /// maximum named in the error
 #[test]
 fn test_zero_output_len_rejected() {
-    for &codec in &[Codec::Shake128, Codec::Shake256] {
+    for &codec in &[Codec::Blake3, Codec::Shake128, Codec::Shake256] {
         let mut builder = Builder::new(codec).unwrap();
         builder.update(b"zero output length");
         builder.output_len(0);
@@ -296,7 +357,7 @@ fn test_zero_output_len_rejected() {
 /// requested length and the maximum named in the error
 #[test]
 fn test_over_max_output_len_rejected() {
-    for &codec in &[Codec::Shake128, Codec::Shake256] {
+    for &codec in &[Codec::Blake3, Codec::Shake128, Codec::Shake256] {
         let mut builder = Builder::new(codec).unwrap();
         builder.update(b"over-limit output length");
         builder.output_len(MAX_HASH_LENGTH + 1);
@@ -320,7 +381,7 @@ fn test_over_max_output_len_rejected() {
 /// `try_build` and `try_build_encoded`, naming the codec
 #[test]
 fn test_output_len_required_without_setting() {
-    for &codec in &[Codec::Shake128, Codec::Shake256] {
+    for &codec in &[Codec::Blake3, Codec::Shake128, Codec::Shake256] {
         let mut builder = Builder::new(codec).unwrap();
         builder.update(b"no output length");
         let Err(Error::OutputLenRequired { codec: error_codec }) = builder.try_build() else {
@@ -339,10 +400,10 @@ fn test_output_len_required_without_setting() {
 }
 
 /// a digest of one byte, and a digest of sixty-four bytes, are accepted as
-/// explicit hashes under a Shake codec
+/// explicit hashes under an XOF codec
 #[test]
 fn test_with_hash_accepts_valid_lengths() {
-    for &codec in &[Codec::Shake128, Codec::Shake256] {
+    for &codec in &[Codec::Blake3, Codec::Shake128, Codec::Shake256] {
         for &hash_len in &[1usize, 64] {
             let hash = vec![7u8; hash_len];
             let mh = Builder::new(codec)
@@ -365,7 +426,7 @@ fn test_with_hash_accepts_valid_lengths() {
 /// rejected with `OutputLenInvalid` naming the digest length
 #[test]
 fn test_with_hash_rejects_out_of_policy_lengths() {
-    for &codec in &[Codec::Shake128, Codec::Shake256] {
+    for &codec in &[Codec::Blake3, Codec::Shake128, Codec::Shake256] {
         let empty = Builder::new(codec)
             .unwrap()
             .with_hash(Vec::new())
@@ -385,29 +446,28 @@ fn test_with_hash_rejects_out_of_policy_lengths() {
 
     // the over-limit digest is checked against the output policy without
     // being squeezed
-    let over: Vec<u8> = vec![0u8; MAX_HASH_LENGTH + 1];
-    let result = Builder::new(Codec::Shake128)
-        .unwrap()
-        .with_hash(over)
-        .try_build();
-    assert!(
-        matches!(
-            result,
-            Err(Error::OutputLenInvalid {
-                output_len,
-                max,
-                ..
-            }) if output_len == MAX_HASH_LENGTH + 1 && max == MAX_HASH_LENGTH
-        ),
-        "Shake128 accepted a digest one byte over the maximum"
-    );
+    for &codec in &[Codec::Blake3, Codec::Shake128, Codec::Shake256] {
+        let over = vec![0u8; MAX_HASH_LENGTH + 1];
+        let result = Builder::new(codec).unwrap().with_hash(over).try_build();
+        assert!(
+            matches!(
+                result,
+                Err(Error::OutputLenInvalid {
+                    output_len,
+                    max,
+                    ..
+                }) if output_len == MAX_HASH_LENGTH + 1 && max == MAX_HASH_LENGTH
+            ),
+            "{codec:?} accepted a digest one byte over the maximum"
+        );
+    }
 }
 
 /// a valid explicit digest takes precedence over streamed data and an
 /// output length setting
 #[test]
 fn test_with_hash_precedes_streamed_data_and_output_len() {
-    for &codec in &[Codec::Shake128, Codec::Shake256] {
+    for &codec in &[Codec::Blake3, Codec::Shake128, Codec::Shake256] {
         let hash = vec![0x5au8; 32];
 
         let mut builder = Builder::new(codec).unwrap();
