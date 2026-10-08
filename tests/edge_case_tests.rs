@@ -51,7 +51,7 @@ fn test_all_algorithms_single_byte() {
     for &codec in &HASH_CODECS {
         let mh = hash_bytes(codec, &[0x42]);
         assert_eq!(mh.codec(), codec);
-        assert!(!mh.as_ref().is_empty());
+        assert_ne!(mh.as_ref(), []);
     }
 }
 
@@ -154,7 +154,7 @@ fn test_debug_format() {
     let mh = hash_bytes(Codec::Sha2256, b"test");
 
     let debug_str = format!("{mh:?}");
-    assert!(!debug_str.is_empty());
+    assert_ne!(debug_str, "");
     assert!(debug_str.len() > 10);
 }
 

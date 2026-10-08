@@ -426,11 +426,11 @@ mod tests {
         assert_eq!(err.kind(), "UnsupportedHash");
         let msg = err.to_string();
         // Check error message is present and non-empty
-        assert!(!msg.is_empty());
+        assert_ne!(msg, "");
         assert!(msg.len() > 10);
         // Check context contains codec info
         let context = err.context();
-        assert!(!context.is_empty());
+        assert_ne!(context, "");
     }
 
     #[test]
@@ -455,7 +455,7 @@ mod tests {
         assert_eq!(err.kind(), "OutputLenRequired");
         assert!(err.to_string().contains("output length"));
         let context = err.context();
-        assert!(!context.is_empty());
+        assert_ne!(context, "");
         assert!(context.contains("Shake128") || context.contains("shake-128"));
     }
 
@@ -467,7 +467,7 @@ mod tests {
         assert!(msg.contains('0'));
         assert!(msg.contains("16777216"));
         let context = err.context();
-        assert!(!context.is_empty());
+        assert_ne!(context, "");
         assert!(context.contains("Shake256") || context.contains("shake-256"));
     }
 
@@ -499,7 +499,7 @@ mod tests {
     fn test_error_context_informative() {
         let err = Error::unsupported_hash(Codec::Sha2256);
         let context = err.context();
-        assert!(!context.is_empty());
+        assert_ne!(context, "");
         assert!(context.contains("Sha2256") || context.contains("sha2-256"));
 
         let err = Error::invalid_digest_length(Codec::Sha2512, 64, 32);

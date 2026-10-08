@@ -55,7 +55,7 @@ fn test_multicodec_integration() {
         let name = codec.as_str();
 
         assert!(code > 0);
-        assert!(!name.is_empty());
+        assert_ne!(name, "");
     }
 }
 
@@ -75,7 +75,7 @@ fn test_multibase_integration() {
 
         // Should be able to convert to string and back
         let s = encoded.to_string();
-        assert!(!s.is_empty());
+        assert_ne!(s, "");
 
         // Encoding should preserve the base
         assert_eq!(encoded.encoding(), base);
@@ -94,7 +94,7 @@ fn test_multitrait_integration() {
     let (mh2, remaining) = Multihash::try_decode_from(&bytes).unwrap();
 
     assert_eq!(mh1, mh2);
-    assert!(remaining.is_empty());
+    assert_eq!(remaining, b"");
 }
 
 /// Test integration with multi-util `BaseEncoded`
@@ -175,7 +175,7 @@ fn test_full_workspace_integration() {
 
     // Verify encoding works
     let s = encoded.to_string();
-    assert!(!s.is_empty());
+    assert_ne!(s, "");
 }
 
 #[cfg(feature = "serde")]
