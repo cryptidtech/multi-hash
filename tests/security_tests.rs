@@ -5,10 +5,17 @@ use multi_codec::Codec;
 use multi_hash::{Builder, Error, Multihash, SAFE_HASH_CODECS};
 use multi_util::CodecInfo;
 
+/// build a multihash of `data` with `codec`, streaming the data
+fn hash_bytes(codec: Codec, data: &[u8]) -> Multihash {
+    let mut builder = Builder::new(codec).unwrap();
+    builder.update(data);
+    builder.try_build().unwrap()
+}
+
 /// Test that invalid codec is rejected
 #[test]
 fn test_invalid_codec_rejected() {
-    let result = Builder::new_from_bytes(Codec::DagCbor, b"data");
+    let result = Builder::new(Codec::DagCbor);
     assert!(result.is_err());
     assert!(matches!(result.unwrap_err(), Error::UnsupportedHash { .. }));
 }
@@ -16,7 +23,7 @@ fn test_invalid_codec_rejected() {
 /// Test that empty hash data is detected
 #[test]
 fn test_missing_hash_detected() {
-    let result = Builder::new(Codec::Sha2256).try_build();
+    let result = Builder::new(Codec::Sha2256).unwrap().try_build();
     assert!(result.is_err());
     assert!(matches!(result.unwrap_err(), Error::MissingHash));
 }
@@ -59,10 +66,7 @@ fn test_concurrent_hashing() {
         let data_clone = Arc::clone(&data);
         let handle = thread::spawn(move || {
             for _ in 0..10 {
-                let mh = Builder::new_from_bytes(Codec::Sha2256, data_clone.as_ref())
-                    .unwrap()
-                    .try_build()
-                    .unwrap();
+                let mh = hash_bytes(Codec::Sha2256, data_clone.as_ref());
                 assert_eq!(mh.codec(), Codec::Sha2256);
             }
         });
@@ -81,17 +85,9 @@ fn test_deterministic_across_threads() {
 
     let data = b"deterministic test";
 
-    let mh1 = Builder::new_from_bytes(Codec::Sha2256, data)
-        .unwrap()
-        .try_build()
-        .unwrap();
+    let mh1 = hash_bytes(Codec::Sha2256, data);
 
-    let handle = thread::spawn(move || {
-        Builder::new_from_bytes(Codec::Sha2256, data)
-            .unwrap()
-            .try_build()
-            .unwrap()
-    });
+    let handle = thread::spawn(move || hash_bytes(Codec::Sha2256, data));
 
     let mh2 = handle.join().unwrap();
     assert_eq!(mh1, mh2);
@@ -127,10 +123,7 @@ fn test_safe_hash_codecs_functional() {
     let data = b"safety test data";
 
     for &codec in &SAFE_HASH_CODECS {
-        let mh = Builder::new_from_bytes(codec, data)
-            .unwrap()
-            .try_build()
-            .unwrap();
+        let mh = hash_bytes(codec, data);
 
         assert_eq!(mh.codec(), codec);
 

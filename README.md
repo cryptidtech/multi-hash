@@ -110,11 +110,10 @@ See [`HASH_CODECS`](https://docs.rs/multi-hash/latest/multi_hash/constant.HASH_C
 use multi_hash::Builder;
 use multi_codec::Codec;
 
-// Compute a SHA2-256 hash
-let multihash = Builder::new_from_bytes(Codec::Sha2256, b"hello world")
-    .unwrap()
-    .try_build()
-    .unwrap();
+// Compute a SHA2-256 hash over data fed in chunks
+let mut builder = Builder::new(Codec::Sha2256).unwrap();
+builder.update(b"hello world");
+let multihash = builder.try_build().unwrap();
 
 assert_eq!(multihash.codec(), Codec::Sha2256);
 assert_eq!(multihash.as_ref().len(), 32); // SHA2-256 outputs 32 bytes
@@ -130,6 +129,7 @@ use multi_codec::Codec;
 
 let digest = vec![0u8; 32]; // pre-computed SHA2-256 digest
 let multihash = Builder::new(Codec::Sha2256)
+    .unwrap()
     .with_hash(digest)
     .try_build()
     .unwrap();
@@ -143,10 +143,9 @@ Multihashes encode as `codec || length || hash` (varint-prefixed):
 use multi_hash::{Builder, Multihash};
 use multi_codec::Codec;
 
-let mh1 = Builder::new_from_bytes(Codec::Sha2256, b"data")
-    .unwrap()
-    .try_build()
-    .unwrap();
+let mut builder = Builder::new(Codec::Sha2256).unwrap();
+builder.update(b"data");
+let mh1 = builder.try_build().unwrap();
 
 // Encode to binary (varint wire format)
 let bytes: Vec<u8> = mh1.clone().into();
@@ -165,8 +164,9 @@ use multi_hash::Builder;
 use multi_codec::Codec;
 use multi_base::Base;
 
-let encoded = Builder::new_from_bytes(Codec::Sha2256, b"data")
-    .unwrap()
+let mut builder = Builder::new(Codec::Sha2256).unwrap();
+builder.update(b"data");
+let encoded = builder
     .with_base_encoding(Base::Base58Btc)
     .try_build_encoded()
     .unwrap();
@@ -190,10 +190,9 @@ use multi_hash::{Builder, EncodedMultihash};
 use multi_base::Base;
 use multi_codec::Codec;
 
-let mh = Builder::new_from_bytes(Codec::Sha3384, b"for great justice, move every zig!")
-    .unwrap()
-    .try_build()
-    .unwrap();
+let mut builder = Builder::new(Codec::Sha3384).unwrap();
+builder.update(b"for great justice, move every zig!");
+let mh = builder.try_build().unwrap();
 
 // Uses the preferred encoding for multihash objects: Base16Lower
 let encoded_mh1: EncodedMultihash = mh.clone().into();
@@ -217,11 +216,10 @@ struct DocumentHash {
     timestamp: u64,
 }
 
+let mut builder = Builder::new(Codec::Sha2256).unwrap();
+builder.update(b"document content");
 let doc = DocumentHash {
-    hash: Builder::new_from_bytes(Codec::Sha2256, b"document content")
-        .unwrap()
-        .try_build()
-        .unwrap(),
+    hash: builder.try_build().unwrap(),
     timestamp: 1234567890,
 };
 
@@ -243,7 +241,7 @@ use multi_hash::{Builder, Error};
 use multi_codec::Codec;
 
 // Handle unsupported algorithms
-match Builder::new_from_bytes(Codec::Identity, b"data") {
+match Builder::new(Codec::Identity) {
     Err(Error::UnsupportedHash { codec }) => {
         eprintln!("Algorithm {:?} not supported", codec);
     }
@@ -252,9 +250,9 @@ match Builder::new_from_bytes(Codec::Identity, b"data") {
 }
 
 // Handle missing hash data
-match Builder::new(Codec::Sha2256).try_build() {
+match Builder::new(Codec::Sha2256).unwrap().try_build() {
     Err(Error::MissingHash) => {
-        eprintln!("Must call with_hash() before build()");
+        eprintln!("Must call with_hash() or update() before try_build()");
     }
     Err(e) => eprintln!("Other error: {}", e),
     Ok(_) => unreachable!(),

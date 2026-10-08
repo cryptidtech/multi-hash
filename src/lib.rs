@@ -42,10 +42,9 @@
 //! use multi_util::CodecInfo;
 //!
 //! // Compute a SHA2-256 hash
-//! let multihash = Builder::new_from_bytes(Codec::Sha2256, b"hello world")
-//!     .unwrap()
-//!     .try_build()
-//!     .unwrap();
+//! let mut builder = Builder::new(Codec::Sha2256).unwrap();
+//! builder.update(b"hello world");
+//! let multihash = builder.try_build().unwrap();
 //!
 //! assert_eq!(multihash.codec(), Codec::Sha2256);
 //! assert_eq!(multihash.as_ref().len(), 32); // SHA2-256 outputs 32 bytes
@@ -60,6 +59,7 @@
 //! // If you already have a hash digest
 //! let digest = vec![0u8; 32]; // SHA2-256 digest
 //! let multihash = Builder::new(Codec::Sha2256)
+//!     .unwrap()
 //!     .with_hash(digest)
 //!     .try_build()
 //!     .unwrap();
@@ -71,10 +71,9 @@
 //! use multi_hash::{Builder, Multihash};
 //! use multi_codec::Codec;
 //!
-//! let mh1 = Builder::new_from_bytes(Codec::Sha2256, b"data")
-//!     .unwrap()
-//!     .try_build()
-//!     .unwrap();
+//! let mut builder = Builder::new(Codec::Sha2256).unwrap();
+//! builder.update(b"data");
+//! let mh1 = builder.try_build().unwrap();
 //!
 //! // Encode to bytes
 //! let bytes: Vec<u8> = mh1.clone().into();
@@ -92,8 +91,9 @@
 //! use multi_base::Base;
 //!
 //! // Create with specific base encoding
-//! let encoded = Builder::new_from_bytes(Codec::Sha2256, b"data")
-//!     .unwrap()
+//! let mut builder = Builder::new(Codec::Sha2256).unwrap();
+//! builder.update(b"data");
+//! let encoded = builder
 //!     .with_base_encoding(Base::Base58Btc)
 //!     .try_build_encoded()
 //!     .unwrap();
@@ -127,7 +127,7 @@
 //! use multi_codec::Codec;
 //!
 //! // Handle unsupported algorithms
-//! match Builder::new_from_bytes(Codec::Identity, b"data") {
+//! match Builder::new(Codec::Identity) {
 //!     Ok(_) => println!("Success"),
 //!     Err(Error::UnsupportedHash { codec }) => {
 //!         eprintln!("Algorithm {:?} not supported", codec);
@@ -136,10 +136,10 @@
 //! }
 //!
 //! // Handle missing hash data
-//! match Builder::new(Codec::Sha2256).try_build() {
+//! match Builder::new(Codec::Sha2256).unwrap().try_build() {
 //!     Ok(_) => println!("Success"),
 //!     Err(Error::MissingHash) => {
-//!         eprintln!("Must call with_hash() before build()");
+//!         eprintln!("Must call with_hash() or update() before try_build()");
 //!     }
 //!     Err(e) => eprintln!("Other error: {}", e),
 //! }
@@ -155,12 +155,9 @@
 //! use multi_hash::Builder;
 //! use multi_codec::Codec;
 //!
-//! let multihash = Arc::new(
-//!     Builder::new_from_bytes(Codec::Sha2256, b"shared data")
-//!         .unwrap()
-//!         .try_build()
-//!         .unwrap()
-//! );
+//! let mut builder = Builder::new(Codec::Sha2256).unwrap();
+//! builder.update(b"shared data");
+//! let multihash = Arc::new(builder.try_build().unwrap());
 //!
 //! let handle = thread::spawn(move || {
 //!     println!("Hash: {}", hex::encode(multihash.as_ref()));
@@ -216,10 +213,9 @@ pub mod serde;
 /// ```
 /// use multi_hash::prelude::*;
 ///
-/// let mh = Builder::new_from_bytes(Codec::Sha2256, b"test")
-///     .unwrap()
-///     .try_build()
-///     .unwrap();
+/// let mut builder = Builder::new(Codec::Sha2256).unwrap();
+/// builder.update(b"test");
+/// let mh = builder.try_build().unwrap();
 /// // CodecInfo trait is in prelude
 /// assert_eq!(mh.codec(), Codec::Sha2256);
 /// ```

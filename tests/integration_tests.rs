@@ -4,15 +4,25 @@
 
 use multi_base::Base;
 use multi_codec::Codec;
-use multi_hash::{Builder, Multihash};
+use multi_hash::{Builder, EncodedMultihash, Multihash};
 use multi_trait::TryDecodeFrom;
 use multi_util::{CodecInfo, EncodingInfo};
 
-/// Serialize a value to CBOR bytes using `ciborium`.
-fn cbor_to_vec<T: serde::Serialize>(value: &T) -> Vec<u8> {
-    let mut buf = Vec::new();
-    ciborium::into_writer(value, &mut buf).expect("CBOR serialize");
-    buf
+/// build a multihash of `data` with `codec`, streaming the data
+fn hash_bytes(codec: Codec, data: &[u8]) -> Multihash {
+    let mut builder = Builder::new(codec).unwrap();
+    builder.update(data);
+    builder.try_build().unwrap()
+}
+
+/// build a base encoded multihash of `data` with `codec`
+fn hash_encoded(codec: Codec, base: Base, data: &[u8]) -> EncodedMultihash {
+    let mut builder = Builder::new(codec).unwrap();
+    builder.update(data);
+    builder
+        .with_base_encoding(base)
+        .try_build_encoded()
+        .unwrap()
 }
 
 /// Test integration with multi-codec
@@ -43,11 +53,7 @@ fn test_multibase_integration() {
     ];
 
     for base in bases {
-        let encoded = Builder::new_from_bytes(Codec::Sha2256, b"test data")
-            .unwrap()
-            .with_base_encoding(base)
-            .try_build_encoded()
-            .unwrap();
+        let encoded = hash_encoded(Codec::Sha2256, base, b"test data");
 
         // Should be able to convert to string and back
         let s = encoded.to_string();
@@ -61,10 +67,7 @@ fn test_multibase_integration() {
 /// Test integration with multi-trait
 #[test]
 fn test_multitrait_integration() {
-    let mh1 = Builder::new_from_bytes(Codec::Sha3256, b"multitrait test")
-        .unwrap()
-        .try_build()
-        .unwrap();
+    let mh1 = hash_bytes(Codec::Sha3256, b"multitrait test");
 
     // Convert to bytes using Into (from multitrait patterns)
     let bytes: Vec<u8> = mh1.clone().into();
@@ -79,10 +82,7 @@ fn test_multitrait_integration() {
 /// Test integration with multi-util `BaseEncoded`
 #[test]
 fn test_multiutil_integration() {
-    let mh = Builder::new_from_bytes(Codec::Blake3, b"multiutil test")
-        .unwrap()
-        .try_build()
-        .unwrap();
+    let mh = hash_bytes(Codec::Blake3, b"multiutil test");
 
     // CodecInfo trait from multiutil
     assert_eq!(mh.codec(), Codec::Blake3);
@@ -96,13 +96,7 @@ fn test_multiutil_integration() {
 /// Test `EncodedMultihash` uses `BaseEncoded` from multiutil
 #[test]
 fn test_encoded_multihash_type() {
-    use multi_hash::EncodedMultihash;
-
-    let encoded = Builder::new_from_bytes(Codec::Sha2512, b"encoded test")
-        .unwrap()
-        .with_base_encoding(Base::Base64)
-        .try_build_encoded()
-        .unwrap();
+    let encoded = hash_encoded(Codec::Sha2512, Base::Base64, b"encoded test");
 
     // EncodedMultihash is a type alias to BaseEncoded
     let _: &EncodedMultihash = &encoded;
@@ -116,14 +110,8 @@ fn test_encoded_multihash_type() {
 fn test_in_collections() {
     use std::collections::BTreeMap;
 
-    let mh1 = Builder::new_from_bytes(Codec::Sha2256, b"key1")
-        .unwrap()
-        .try_build()
-        .unwrap();
-    let mh2 = Builder::new_from_bytes(Codec::Sha2256, b"key2")
-        .unwrap()
-        .try_build()
-        .unwrap();
+    let mh1 = hash_bytes(Codec::Sha2256, b"key1");
+    let mh2 = hash_bytes(Codec::Sha2256, b"key2");
 
     // BTreeMap (requires Ord)
     let mut btree = BTreeMap::new();
@@ -140,6 +128,7 @@ fn test_in_collections() {
 #[test]
 fn test_builder_fluent_api() {
     let result = Builder::new(Codec::Sha3384)
+        .unwrap()
         .with_hash(vec![0u8; 48])
         .with_base_encoding(Base::Base58Btc)
         .try_build_encoded();
@@ -155,21 +144,14 @@ fn test_full_workspace_integration() {
     let base = Base::Base32Lower; // multi-base
 
     // Create multihash (multi-hash)
-    let mh = Builder::new_from_bytes(codec, b"integration")
-        .unwrap()
-        .try_build()
-        .unwrap();
+    let mh = hash_bytes(codec, b"integration");
 
     // Verify traits from multi-util work
     assert_eq!(mh.codec(), codec);
     assert_eq!(mh.encoding(), Base::Base16Lower);
 
     // Verify we can create encoded version (uses BaseEncoded from multiutil)
-    let encoded = Builder::new_from_bytes(codec, b"integration")
-        .unwrap()
-        .with_base_encoding(base)
-        .try_build_encoded()
-        .unwrap();
+    let encoded = hash_encoded(codec, base, b"integration");
 
     assert_eq!(encoded.encoding(), base);
 
@@ -183,6 +165,13 @@ mod serde_integration {
     use super::*;
     use serde::{Deserialize, Serialize};
 
+    /// Serialize a value to CBOR bytes using `ciborium`.
+    fn cbor_to_vec<T: serde::Serialize>(value: &T) -> Vec<u8> {
+        let mut buf = Vec::new();
+        ciborium::into_writer(value, &mut buf).expect("CBOR serialize");
+        buf
+    }
+
     /// Test multihash in serde structs
     #[test]
     fn test_multihash_in_struct() {
@@ -193,10 +182,7 @@ mod serde_integration {
         }
 
         let doc = Document {
-            hash: Builder::new_from_bytes(Codec::Sha2256, b"document")
-                .unwrap()
-                .try_build()
-                .unwrap(),
+            hash: hash_bytes(Codec::Sha2256, b"document"),
             timestamp: 1234567890,
         };
 
