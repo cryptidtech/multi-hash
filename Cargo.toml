@@ -1,6 +1,6 @@
 [package]
 name = "multi-hash"
-version = "2.0.0"
+version = "2.0.1"
 edition = "2024"
 rust-version = "1.99"
 authors = ["Dave Grantham <dwg@linuxprogrammer.org>"]
@@ -18,12 +18,12 @@ default = ["serde"]
 fips = []
 
 [dependencies]
-blake2 = "0.11.0-rc.6"
+blake2 = "0.11.0"
 blake3 = { version = "1.8", features = ["traits-preview", "zeroize"] }
-multi-base = "1.0"
-multi-codec = "1.2"
-multi-trait = "1.0"
-multi-util = "1.1"
+multi-base = "1.1"
+multi-codec = "1.6"
+multi-trait = "1.1"
+multi-util = "1.2"
 digest = { version = "0.11", features = ["alloc"] }
 hex = "0.4"
 md-5 = "0.11"
