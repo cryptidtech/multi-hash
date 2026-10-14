@@ -6,7 +6,7 @@ The `multi-hash` crate gives self-describing cryptographic hash digests. It foll
 
 ## std-only Status
 
-The crate is std-only. The hash path holds each hasher as a concrete type in a private `Hasher` enum. The enum dispatches between the hashers without a trait object. The BLAKE3 arm holds a boxed `blake3::Hasher`. The boxed hasher and the digest buffers need the allocator in `std`. A `no_std` conversion is not planned for this crate.
+The crate is std-only. The hash path holds each hasher as a concrete type in a private `Hasher` enum. The enum dispatches between the hashers without a trait object. Each arm exists only when its hash family feature (`blake2`, `blake3`, `md5`, `ripemd`, `sha1`, `sha2`, `sha3`, `shake`) is enabled. The BLAKE3 arm holds a boxed `blake3::Hasher`. The boxed hasher and the digest buffers need the allocator in `std`. A `no_std` conversion is not planned for this crate.
 
 ## Security Properties
 

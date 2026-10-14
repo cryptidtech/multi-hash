@@ -73,30 +73,27 @@ impl<'de> Deserialize<'de> for Multihash {
             // (BorrowedBytes), `serde_cbor` (borrowed), and `ciborium`
             // (owned). The previous `&'de [u8]` bound only worked with
             // deserializers that support borrowing from input.
+            // decodes straight from the input bytes, without first copying
+            // them into an intermediate buffer
             struct ByteBufVisitor;
 
-            impl<'de> Visitor<'de> for ByteBufVisitor {
-                type Value = Vec<u8>;
+            impl Visitor<'_> for ByteBufVisitor {
+                type Value = Multihash;
 
                 fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                     f.write_str("byte buffer")
                 }
 
-                fn visit_borrowed_bytes<E: Error>(self, v: &'de [u8]) -> Result<Self::Value, E> {
-                    Ok(v.to_vec())
-                }
-
                 fn visit_bytes<E: Error>(self, v: &[u8]) -> Result<Self::Value, E> {
-                    Ok(v.to_vec())
+                    Multihash::try_from(v).map_err(|e| Error::custom(e.to_string()))
                 }
 
                 fn visit_byte_buf<E: Error>(self, v: Vec<u8>) -> Result<Self::Value, E> {
-                    Ok(v)
+                    self.visit_bytes(v.as_slice())
                 }
             }
 
-            let b = deserializer.deserialize_byte_buf(ByteBufVisitor)?;
-            Ok(Self::try_from(b.as_slice()).map_err(|e| Error::custom(e.to_string()))?)
+            deserializer.deserialize_byte_buf(ByteBufVisitor)
         }
     }
 }
