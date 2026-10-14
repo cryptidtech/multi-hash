@@ -85,7 +85,7 @@ impl<'de> Deserialize<'de> for Multihash {
                 }
 
                 fn visit_bytes<E: Error>(self, v: &[u8]) -> Result<Self::Value, E> {
-                    Multihash::try_from(v).map_err(|e| Error::custom(e.to_string()))
+                    Multihash::try_from(v).map_err(E::custom)
                 }
 
                 fn visit_byte_buf<E: Error>(self, v: Vec<u8>) -> Result<Self::Value, E> {
