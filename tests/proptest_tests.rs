@@ -1,5 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Property-based tests for multi-hash using proptest
+#![cfg(all(
+    feature = "blake2",
+    feature = "blake3",
+    feature = "md5",
+    feature = "ripemd",
+    feature = "sha1",
+    feature = "sha2",
+    feature = "sha3",
+    feature = "shake"
+))]
 
 use multi_codec::Codec;
 use multi_hash::{Builder, HASH_CODECS, Multihash};

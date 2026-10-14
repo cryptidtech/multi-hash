@@ -17,6 +17,7 @@
 //! value for the same message. A 32-byte BLAKE3 digest stays a BLAKE3
 //! digest: it is no BLAKE2b-256 value, because the codecs are distinct
 //! algorithms.
+#![cfg(all(feature = "blake3", feature = "sha2", feature = "shake"))]
 #![allow(clippy::unreadable_literal)]
 
 use multi_base::Base;
@@ -262,7 +263,7 @@ fn test_distinct_lengths_distinct_encodings() {
             "{codec:?}: short digest is not a prefix of the long digest"
         );
 
-        let short_bytes: Vec<u8> = short.clone().into();
+        let short_bytes: Vec<u8> = short.into();
         let long_bytes: Vec<u8> = long.into();
         assert_ne!(short_bytes, long_bytes, "{codec:?}: encodings matched");
 

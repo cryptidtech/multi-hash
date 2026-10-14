@@ -5,6 +5,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-10-13
+
+### Added
+
+- One feature per hash family: `blake2`, `blake3`, `md5`, `ripemd`, `sha1`, `sha2`, `sha3`, and `shake`. Each one pulls in only its hash crate (plus `digest`, and `typenum` for `blake2`). All of them are in the default feature set, so a default build behaves as 2.x did.
+- With `default-features = false` the crate depends on no hash crate. It still provides the `Multihash` type, its binary and multibase encoding, `HASH_CODECS` and the other codec lists, the digest length checks, and `Builder::with_hash` for digests computed elsewhere.
+- `impl From<&Multihash> for Vec<u8>` encodes without cloning. The owned `From<Multihash>` now delegates to it, and binary serde serialization uses it instead of cloning the multihash.
+
+### Changed
+
+- **Breaking:** a build with `default-features = false` no longer computes digests. In 2.x that setting only dropped `serde`. Streaming data with `Builder::update` into a codec whose family feature is off makes `try_build` and `try_build_encoded` return `Error::UnsupportedHash`, where 2.x returned the digest. Add the hash family features you use to keep 2.x behavior.
+- `Error::UnsupportedHash` now also covers a codec whose hash family feature is disabled, and its message says so.
+- The `serde` feature now enables the optional `serde` dependency through `dep:serde`.
+- The benchmark declares `required-features`, so `cargo bench` skips it when a hash family it uses is off.
+- Binary serde deserialization decodes straight from the input bytes instead of copying them into an intermediate buffer first.
+- Removed three redundant `clone()` calls in the XOF prefix tests that failed `cargo clippy --all-targets -- -D warnings`.
+
+### Dependencies
+
+- `blake2`, `blake3`, `digest`, `md-5`, `ripemd`, `sha1`, `sha2`, `sha3`, `shake`, and `typenum` are now optional.
+
 ## [2.0.0] - 2026-10-07
 
 ### Added

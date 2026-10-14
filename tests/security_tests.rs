@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Security-focused tests for multi-hash
+#![cfg(all(
+    feature = "blake2",
+    feature = "blake3",
+    feature = "sha2",
+    feature = "sha3",
+    feature = "shake"
+))]
 
 use multi_codec::Codec;
 use multi_hash::{Builder, Error, Multihash, SAFE_HASH_CODECS};

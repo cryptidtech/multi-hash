@@ -1,6 +1,6 @@
 [package]
 name = "multi-hash"
-version = "2.0.1"
+version = "3.0.0"
 edition = "2024"
 rust-version = "1.99"
 authors = ["Dave Grantham <dwg@linuxprogrammer.org>"]
@@ -12,30 +12,51 @@ keywords = ["multihash", "multiformats", "hash", "crypto"]
 categories = ["cryptography", "encoding"]
 
 [features]
-default = ["serde"]
+default = [
+    "blake2",
+    "blake3",
+    "md5",
+    "ripemd",
+    "serde",
+    "sha1",
+    "sha2",
+    "sha3",
+    "shake",
+]
 
+# each hash family is its own feature; with none enabled the crate still
+# provides the Multihash type, its encoding, and Builder::with_hash
+blake2 = ["dep:blake2", "dep:digest", "dep:typenum"]
+blake3 = ["dep:blake3"]
 # expose the FIPS approved codec constants, FIPS_CODECS and SAFE_FIPS_CODECS
 fips = []
+md5 = ["dep:digest", "dep:md-5"]
+ripemd = ["dep:digest", "dep:ripemd"]
+serde = ["dep:serde"]
+sha1 = ["dep:digest", "dep:sha1"]
+sha2 = ["dep:digest", "dep:sha2"]
+sha3 = ["dep:digest", "dep:sha3"]
+shake = ["dep:digest", "dep:shake"]
 
 [dependencies]
-blake2 = "0.11.0"
-blake3 = { version = "1.8", features = ["traits-preview", "zeroize"] }
+blake2 = { version = "0.11.0", optional = true }
+blake3 = { version = "1.8", features = ["traits-preview", "zeroize"], optional = true }
+digest = { version = "0.11", features = ["alloc"], optional = true }
+hex = "0.4"
+md-5 = { version = "0.11", optional = true }
 multi-base = "1.1"
 multi-codec = "1.6"
 multi-trait = "1.1"
 multi-util = "1.2"
-digest = { version = "0.11", features = ["alloc"] }
-hex = "0.4"
-md-5 = "0.11"
-ripemd = "0.2"
+ripemd = { version = "0.2", optional = true }
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive"], optional = true }
-sha1 = "0.11"
-sha2 = "0.11"
-sha3 = "0.12"
-shake = "0.1"
+sha1 = { version = "0.11", optional = true }
+sha2 = { version = "0.11", optional = true }
+sha3 = { version = "0.12", optional = true }
+shake = { version = "0.1", optional = true }
 subtle = "2"
 thiserror = { version = "2.0" }
-typenum = "1.20"
+typenum = { version = "1.20", optional = true }
 unsigned-varint = { version = "0.8", features = ["std"] }
 
 [dev-dependencies]
@@ -62,3 +83,4 @@ unsafe_code = "deny"
 name = "multihash_bench"
 harness = false
 path = "benches/multihash_bench.rs"
+required-features = ["blake3", "md5", "sha2", "sha3", "shake"]
