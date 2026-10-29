@@ -5,11 +5,14 @@ mod ser;
 
 #[cfg(test)]
 mod tests {
-    use crate::prelude::{Base, Builder, Codec, Multihash};
+    use crate::prelude::Multihash;
+    #[cfg(feature = "blake2")]
+    use crate::prelude::{Base, Builder, Codec};
     use multi_trait::Null;
     use serde_test::{Configure, Token, assert_tokens};
 
     /// build a multihash of `data` with `codec`, streaming the data
+    #[cfg(feature = "blake2")]
     fn hash_bytes(codec: Codec, data: &[u8]) -> Multihash {
         let mut builder = Builder::new(codec).unwrap();
         builder.update(data);
@@ -18,12 +21,14 @@ mod tests {
 
     /// Serialize a value to CBOR bytes using `ciborium` (replaces the
     /// unmaintained `serde_cbor` dev-dependency).
+    #[cfg(feature = "blake2")]
     fn cbor_to_vec<T: serde::Serialize>(value: &T) -> Vec<u8> {
         let mut buf = Vec::new();
         ciborium::into_writer(value, &mut buf).expect("CBOR serialize");
         buf
     }
 
+    #[cfg(feature = "blake2")]
     #[test]
     fn test_serde_compact() {
         let mh = hash_bytes(Codec::Blake2S256, b"for great justice, move every zig!");
@@ -39,6 +44,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "blake2")]
     #[test]
     fn test_serde_encoded_string() {
         let mut builder = Builder::new(Codec::Blake2S256).unwrap();
@@ -56,6 +62,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "blake2")]
     #[test]
     fn test_serde_string() {
         let mh = hash_bytes(Codec::Blake2S256, b"for great justice, move every zig!");
@@ -77,6 +84,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "blake2")]
     #[test]
     fn test_serde_json() {
         let mh1 = hash_bytes(Codec::Blake2S256, b"for great justice, move every zig!");
@@ -86,6 +94,7 @@ mod tests {
         assert_eq!(mh1, mh2);
     }
 
+    #[cfg(feature = "blake2")]
     #[test]
     fn test_serde_cbor() {
         let mh1 = hash_bytes(Codec::Blake2S256, b"for great justice, move every zig!");

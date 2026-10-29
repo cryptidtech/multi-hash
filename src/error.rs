@@ -64,8 +64,9 @@ pub enum Error {
 
     /// Unsupported hash algorithm
     ///
-    /// The specified codec is not a supported cryptographic hash algorithm
-    /// or is not implemented in this crate.
+    /// The specified codec is not a supported cryptographic hash algorithm,
+    /// is not implemented in this crate, or belongs to a hash family whose
+    /// feature is disabled in this build.
     ///
     /// # Context
     ///
@@ -90,7 +91,8 @@ pub enum Error {
     #[error(
         "Unsupported hash algorithm: {codec:?}\n\
              The codec {codec:?} is not a supported cryptographic hash algorithm.\n\
-             See HASH_CODECS or SAFE_HASH_CODECS for supported algorithms."
+             See HASH_CODECS or SAFE_HASH_CODECS for supported algorithms;\n\
+             computing a digest also needs the codec's hash family feature."
     )]
     UnsupportedHash {
         /// The unsupported codec that was requested
@@ -433,6 +435,7 @@ mod tests {
         assert_ne!(context, "");
     }
 
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_invalid_digest_length_error() {
         let err = Error::invalid_digest_length(Codec::Sha2256, 32, 16);
@@ -442,6 +445,7 @@ mod tests {
         assert!(msg.contains("16"));
     }
 
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_hash_compute_failed_error() {
         let err = Error::hash_compute_failed(Codec::Sha2256, "test failure");
@@ -449,6 +453,7 @@ mod tests {
         assert!(err.to_string().contains("test failure"));
     }
 
+    #[cfg(feature = "shake")]
     #[test]
     fn test_output_len_required_error() {
         let err = Error::output_len_required(Codec::Shake128);
@@ -459,6 +464,7 @@ mod tests {
         assert!(context.contains("Shake128") || context.contains("shake-128"));
     }
 
+    #[cfg(feature = "shake")]
     #[test]
     fn test_output_len_invalid_error() {
         let err = Error::output_len_invalid(Codec::Shake256, 0, 16 * 1024 * 1024);
@@ -471,6 +477,7 @@ mod tests {
         assert!(context.contains("Shake256") || context.contains("shake-256"));
     }
 
+    #[cfg(all(feature = "sha2", feature = "shake"))]
     #[test]
     fn test_error_kind_uniqueness() {
         let errors = [
@@ -495,6 +502,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_error_context_informative() {
         let err = Error::unsupported_hash(Codec::Sha2256);

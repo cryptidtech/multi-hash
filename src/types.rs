@@ -305,24 +305,28 @@ mod tests {
         assert_eq!(map.get(&digest), Some(&"test"));
     }
 
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_algorithm_id_new() {
         let algo = AlgorithmId::new(Codec::Sha2256);
         assert_eq!(algo.codec(), Codec::Sha2256);
     }
 
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_algorithm_id_code() {
         let algo = AlgorithmId::new(Codec::Sha2256);
         assert_eq!(algo.code(), 0x12);
     }
 
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_algorithm_id_name() {
         let algo = AlgorithmId::new(Codec::Sha2256);
         assert_eq!(algo.name(), "sha2-256");
     }
 
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_algorithm_id_conversions() {
         let codec = Codec::Sha2512;
@@ -331,12 +335,14 @@ mod tests {
         assert_eq!(back, codec);
     }
 
+    #[cfg(feature = "sha3")]
     #[test]
     fn test_algorithm_id_display() {
         let algo = AlgorithmId::new(Codec::Sha3256);
         assert_eq!(algo.to_string(), "sha3-256");
     }
 
+    #[cfg(feature = "blake3")]
     #[test]
     fn test_algorithm_id_copy() {
         let algo1 = AlgorithmId::new(Codec::Blake3);

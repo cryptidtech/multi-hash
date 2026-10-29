@@ -9,12 +9,23 @@
 use crate::Error;
 use core::fmt;
 use core::hash::Hash;
-use digest::{Digest, ExtendableOutput, Update};
+#[cfg(any(
+    feature = "blake2",
+    feature = "md5",
+    feature = "ripemd",
+    feature = "sha1",
+    feature = "sha2",
+    feature = "sha3"
+))]
+use digest::Digest;
+#[cfg(feature = "shake")]
+use digest::{ExtendableOutput, Update};
 use multi_base::Base;
 use multi_codec::Codec;
 use multi_trait::{EncodeInto, Null, TryDecodeFrom};
 use multi_util::{BaseEncoded, CodecInfo, DetectedEncoder, EncodingInfo, Varbytes};
 use subtle::ConstantTimeEq;
+#[cfg(feature = "blake2")]
 use typenum::consts::{U28, U32, U48, U64};
 
 /// the maximum multihash digest output length in bytes
@@ -258,95 +269,167 @@ const fn validate_output_len(codec: Codec, output_len: Option<usize>) -> Result<
 ///
 /// Enum dispatch keeps the hashing state concrete: every arm is `Send`,
 /// `Sync`, `Clone`, and `Debug`, and hashing avoids a trait-object
-/// allocation per hash.
+/// allocation per hash. Each arm exists only when its hash family
+/// feature is enabled.
+#[cfg(any(
+    feature = "blake2",
+    feature = "blake3",
+    feature = "md5",
+    feature = "ripemd",
+    feature = "sha1",
+    feature = "sha2",
+    feature = "sha3",
+    feature = "shake"
+))]
 #[derive(Clone)]
 enum Hasher {
     /// blake2b with a 224-bit digest
+    #[cfg(feature = "blake2")]
     Blake2B224(blake2::Blake2b<U28>),
     /// blake2b with a 256-bit digest
+    #[cfg(feature = "blake2")]
     Blake2B256(blake2::Blake2b<U32>),
     /// blake2b with a 384-bit digest
+    #[cfg(feature = "blake2")]
     Blake2B384(blake2::Blake2b<U48>),
     /// blake2b with a 512-bit digest
+    #[cfg(feature = "blake2")]
     Blake2B512(blake2::Blake2b<U64>),
     /// blake2s with a 224-bit digest
+    #[cfg(feature = "blake2")]
     Blake2S224(blake2::Blake2s<U28>),
     /// blake2s with a 256-bit digest
+    #[cfg(feature = "blake2")]
     Blake2S256(blake2::Blake2s<U32>),
     /// blake3 extendable-output function
     ///
     /// `blake3::Hasher` is roughly 2 KB, so its arm is boxed to keep the
     /// other arms, and every [`Builder`] value, small
+    #[cfg(feature = "blake3")]
     Blake3(Box<blake3::Hasher>),
     /// md5 with a 128-bit digest
+    #[cfg(feature = "md5")]
     Md5(md5::Md5),
     /// ripemd128 with a 128-bit digest
+    #[cfg(feature = "ripemd")]
     Ripemd128(ripemd::Ripemd128),
     /// ripemd160 with a 160-bit digest
+    #[cfg(feature = "ripemd")]
     Ripemd160(ripemd::Ripemd160),
     /// ripemd256 with a 256-bit digest
+    #[cfg(feature = "ripemd")]
     Ripemd256(ripemd::Ripemd256),
     /// ripemd320 with a 320-bit digest
+    #[cfg(feature = "ripemd")]
     Ripemd320(ripemd::Ripemd320),
     /// sha1 with a 160-bit digest
+    #[cfg(feature = "sha1")]
     Sha1(sha1::Sha1),
     /// sha2-224 with a 224-bit digest
+    #[cfg(feature = "sha2")]
     Sha2224(sha2::Sha224),
     /// sha2-256 with a 256-bit digest
+    #[cfg(feature = "sha2")]
     Sha2256(sha2::Sha256),
     /// sha2-384 with a 384-bit digest
+    #[cfg(feature = "sha2")]
     Sha2384(sha2::Sha384),
     /// sha2-512 with a 512-bit digest
+    #[cfg(feature = "sha2")]
     Sha2512(sha2::Sha512),
     /// sha2-512/224 with a 224-bit digest
+    #[cfg(feature = "sha2")]
     Sha2512224(sha2::Sha512_224),
     /// sha2-512/256 with a 256-bit digest
+    #[cfg(feature = "sha2")]
     Sha2512256(sha2::Sha512_256),
     /// sha3-224 with a 224-bit digest
+    #[cfg(feature = "sha3")]
     Sha3224(sha3::Sha3_224),
     /// sha3-256 with a 256-bit digest
+    #[cfg(feature = "sha3")]
     Sha3256(sha3::Sha3_256),
     /// sha3-384 with a 384-bit digest
+    #[cfg(feature = "sha3")]
     Sha3384(sha3::Sha3_384),
     /// sha3-512 with a 512-bit digest
+    #[cfg(feature = "sha3")]
     Sha3512(sha3::Sha3_512),
     /// shake128 extendable-output function
+    #[cfg(feature = "shake")]
     Shake128(shake::Shake128),
     /// shake256 extendable-output function
+    #[cfg(feature = "shake")]
     Shake256(shake::Shake256),
 }
 
+#[cfg(any(
+    feature = "blake2",
+    feature = "blake3",
+    feature = "md5",
+    feature = "ripemd",
+    feature = "sha1",
+    feature = "sha2",
+    feature = "sha3",
+    feature = "shake"
+))]
 impl Hasher {
     /// create the streaming hasher for a codec
     ///
-    /// Returns `None` only for codecs outside [`HASH_CODECS`], which
-    /// [`Builder::new`] rejects up front.
+    /// Returns `None` for codecs outside [`HASH_CODECS`], which
+    /// [`Builder::new`] rejects up front, and for codecs whose hash family
+    /// feature is disabled.
     fn new(codec: Codec) -> Option<Self> {
         Some(match codec {
+            #[cfg(feature = "blake2")]
             Codec::Blake2B224 => Self::Blake2B224(blake2::Blake2b::<U28>::new()),
+            #[cfg(feature = "blake2")]
             Codec::Blake2B256 => Self::Blake2B256(blake2::Blake2b::<U32>::new()),
+            #[cfg(feature = "blake2")]
             Codec::Blake2B384 => Self::Blake2B384(blake2::Blake2b::<U48>::new()),
+            #[cfg(feature = "blake2")]
             Codec::Blake2B512 => Self::Blake2B512(blake2::Blake2b::<U64>::new()),
+            #[cfg(feature = "blake2")]
             Codec::Blake2S224 => Self::Blake2S224(blake2::Blake2s::<U28>::new()),
+            #[cfg(feature = "blake2")]
             Codec::Blake2S256 => Self::Blake2S256(blake2::Blake2s::<U32>::new()),
+            #[cfg(feature = "blake3")]
             Codec::Blake3 => Self::Blake3(Box::new(blake3::Hasher::new())),
+            #[cfg(feature = "md5")]
             Codec::Md5 => Self::Md5(md5::Md5::new()),
+            #[cfg(feature = "ripemd")]
             Codec::Ripemd128 => Self::Ripemd128(ripemd::Ripemd128::new()),
+            #[cfg(feature = "ripemd")]
             Codec::Ripemd160 => Self::Ripemd160(ripemd::Ripemd160::new()),
+            #[cfg(feature = "ripemd")]
             Codec::Ripemd256 => Self::Ripemd256(ripemd::Ripemd256::new()),
+            #[cfg(feature = "ripemd")]
             Codec::Ripemd320 => Self::Ripemd320(ripemd::Ripemd320::new()),
+            #[cfg(feature = "sha1")]
             Codec::Sha1 => Self::Sha1(sha1::Sha1::new()),
+            #[cfg(feature = "sha2")]
             Codec::Sha2224 => Self::Sha2224(sha2::Sha224::new()),
+            #[cfg(feature = "sha2")]
             Codec::Sha2256 => Self::Sha2256(sha2::Sha256::new()),
+            #[cfg(feature = "sha2")]
             Codec::Sha2384 => Self::Sha2384(sha2::Sha384::new()),
+            #[cfg(feature = "sha2")]
             Codec::Sha2512 => Self::Sha2512(sha2::Sha512::new()),
+            #[cfg(feature = "sha2")]
             Codec::Sha2512224 => Self::Sha2512224(sha2::Sha512_224::new()),
+            #[cfg(feature = "sha2")]
             Codec::Sha2512256 => Self::Sha2512256(sha2::Sha512_256::new()),
+            #[cfg(feature = "sha3")]
             Codec::Sha3224 => Self::Sha3224(sha3::Sha3_224::new()),
+            #[cfg(feature = "sha3")]
             Codec::Sha3256 => Self::Sha3256(sha3::Sha3_256::new()),
+            #[cfg(feature = "sha3")]
             Codec::Sha3384 => Self::Sha3384(sha3::Sha3_384::new()),
+            #[cfg(feature = "sha3")]
             Codec::Sha3512 => Self::Sha3512(sha3::Sha3_512::new()),
+            #[cfg(feature = "shake")]
             Codec::Shake128 => Self::Shake128(shake::Shake128::default()),
+            #[cfg(feature = "shake")]
             Codec::Shake256 => Self::Shake256(shake::Shake256::default()),
             _ => return None,
         })
@@ -355,89 +438,132 @@ impl Hasher {
     /// feed data to the streaming hasher
     fn update(&mut self, data: &[u8]) {
         match self {
+            #[cfg(feature = "blake2")]
             Self::Blake2B224(h) => Digest::update(h, data),
+            #[cfg(feature = "blake2")]
             Self::Blake2B256(h) => Digest::update(h, data),
+            #[cfg(feature = "blake2")]
             Self::Blake2B384(h) => Digest::update(h, data),
+            #[cfg(feature = "blake2")]
             Self::Blake2B512(h) => Digest::update(h, data),
+            #[cfg(feature = "blake2")]
             Self::Blake2S224(h) => Digest::update(h, data),
+            #[cfg(feature = "blake2")]
             Self::Blake2S256(h) => Digest::update(h, data),
             // the streaming calls go through the fully qualified inherent
             // path: blake3 also supplies trait methods of the same names
+            #[cfg(feature = "blake3")]
             Self::Blake3(h) => {
                 blake3::Hasher::update(h, data);
             }
+            #[cfg(feature = "md5")]
             Self::Md5(h) => Digest::update(h, data),
+            #[cfg(feature = "ripemd")]
             Self::Ripemd128(h) => Digest::update(h, data),
+            #[cfg(feature = "ripemd")]
             Self::Ripemd160(h) => Digest::update(h, data),
+            #[cfg(feature = "ripemd")]
             Self::Ripemd256(h) => Digest::update(h, data),
+            #[cfg(feature = "ripemd")]
             Self::Ripemd320(h) => Digest::update(h, data),
+            #[cfg(feature = "sha1")]
             Self::Sha1(h) => Digest::update(h, data),
+            #[cfg(feature = "sha2")]
             Self::Sha2224(h) => Digest::update(h, data),
+            #[cfg(feature = "sha2")]
             Self::Sha2256(h) => Digest::update(h, data),
+            #[cfg(feature = "sha2")]
             Self::Sha2384(h) => Digest::update(h, data),
+            #[cfg(feature = "sha2")]
             Self::Sha2512(h) => Digest::update(h, data),
+            #[cfg(feature = "sha2")]
             Self::Sha2512224(h) => Digest::update(h, data),
+            #[cfg(feature = "sha2")]
             Self::Sha2512256(h) => Digest::update(h, data),
+            #[cfg(feature = "sha3")]
             Self::Sha3224(h) => Digest::update(h, data),
+            #[cfg(feature = "sha3")]
             Self::Sha3256(h) => Digest::update(h, data),
+            #[cfg(feature = "sha3")]
             Self::Sha3384(h) => Digest::update(h, data),
+            #[cfg(feature = "sha3")]
             Self::Sha3512(h) => Digest::update(h, data),
             // the XOF arms take `Update::update`; they do not implement
             // the fixed-output `Digest` trait
+            #[cfg(feature = "shake")]
             Self::Shake128(h) => Update::update(h, data),
+            #[cfg(feature = "shake")]
             Self::Shake256(h) => Update::update(h, data),
         }
     }
 
     /// finish the streamed hash and return the digest bytes
     ///
-    /// Fixed-output arms ignore `output_len` and produce their policy
-    /// length. The XOF arms require an output length of `1..=MAX_HASH_LENGTH`
-    /// bytes, checked before any allocation or squeeze.
-    fn finalize(self, codec: Codec, output_len: Option<usize>) -> Result<Vec<u8>, Error> {
-        match self {
-            Self::Blake2B224(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Blake2B256(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Blake2B384(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Blake2B512(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Blake2S224(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Blake2S256(h) => Ok(Digest::finalize(h).to_vec()),
+    /// `out_len` is the codec's resolved output length: fixed-output arms
+    /// ignore it and produce their policy length, and the XOF arms squeeze
+    /// exactly `out_len` bytes, already checked against `1..=MAX_HASH_LENGTH`.
+    fn finalize(self, out_len: usize) -> Vec<u8> {
+        match (self, out_len) {
+            #[cfg(feature = "blake2")]
+            (Self::Blake2B224(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "blake2")]
+            (Self::Blake2B256(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "blake2")]
+            (Self::Blake2B384(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "blake2")]
+            (Self::Blake2B512(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "blake2")]
+            (Self::Blake2S224(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "blake2")]
+            (Self::Blake2S256(h), _) => Digest::finalize(h).to_vec(),
             // see `update`: fully qualified inherent path for blake3
             //
             // `finalize_xof` gives a fresh reader at stream offset zero, so
             // the digest is always the first `out_len` bytes of the BLAKE3
             // output stream. A 32-byte request matches the classic fixed
             // `blake3` digest
-            Self::Blake3(h) => {
-                let out_len = validate_output_len(codec, output_len)?;
+            #[cfg(feature = "blake3")]
+            (Self::Blake3(h), out_len) => {
                 let mut out = vec![0u8; out_len];
                 blake3::Hasher::finalize_xof(&h).fill(&mut out);
-                Ok(out)
+                out
             }
-            Self::Md5(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Ripemd128(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Ripemd160(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Ripemd256(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Ripemd320(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Sha1(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Sha2224(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Sha2256(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Sha2384(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Sha2512(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Sha2512224(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Sha2512256(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Sha3224(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Sha3256(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Sha3384(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Sha3512(h) => Ok(Digest::finalize(h).to_vec()),
-            Self::Shake128(h) => {
-                let out_len = validate_output_len(codec, output_len)?;
-                Ok(xof_finalize(h, out_len))
-            }
-            Self::Shake256(h) => {
-                let out_len = validate_output_len(codec, output_len)?;
-                Ok(xof_finalize(h, out_len))
-            }
+            #[cfg(feature = "md5")]
+            (Self::Md5(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "ripemd")]
+            (Self::Ripemd128(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "ripemd")]
+            (Self::Ripemd160(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "ripemd")]
+            (Self::Ripemd256(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "ripemd")]
+            (Self::Ripemd320(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "sha1")]
+            (Self::Sha1(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "sha2")]
+            (Self::Sha2224(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "sha2")]
+            (Self::Sha2256(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "sha2")]
+            (Self::Sha2384(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "sha2")]
+            (Self::Sha2512(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "sha2")]
+            (Self::Sha2512224(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "sha2")]
+            (Self::Sha2512256(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "sha3")]
+            (Self::Sha3224(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "sha3")]
+            (Self::Sha3256(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "sha3")]
+            (Self::Sha3384(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "sha3")]
+            (Self::Sha3512(h), _) => Digest::finalize(h).to_vec(),
+            #[cfg(feature = "shake")]
+            (Self::Shake128(h), out_len) => xof_finalize(h, out_len),
+            #[cfg(feature = "shake")]
+            (Self::Shake256(h), out_len) => xof_finalize(h, out_len),
         }
     }
 }
@@ -446,42 +572,122 @@ impl Hasher {
 ///
 /// `ExtendableOutput::finalize_xof_into` reads the first `out_len` bytes of
 /// the XOF stream, so the read always starts at offset zero.
+#[cfg(feature = "shake")]
 fn xof_finalize<T: ExtendableOutput>(hasher: T, out_len: usize) -> Vec<u8> {
     let mut out = vec![0u8; out_len];
     ExtendableOutput::finalize_xof_into(hasher, &mut out);
     out
 }
 
+#[cfg(any(
+    feature = "blake2",
+    feature = "blake3",
+    feature = "md5",
+    feature = "ripemd",
+    feature = "sha1",
+    feature = "sha2",
+    feature = "sha3",
+    feature = "shake"
+))]
 impl fmt::Debug for Hasher {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let name = match self {
+            #[cfg(feature = "blake2")]
             Self::Blake2B224(_) => "Blake2B224(..)",
+            #[cfg(feature = "blake2")]
             Self::Blake2B256(_) => "Blake2B256(..)",
+            #[cfg(feature = "blake2")]
             Self::Blake2B384(_) => "Blake2B384(..)",
+            #[cfg(feature = "blake2")]
             Self::Blake2B512(_) => "Blake2B512(..)",
+            #[cfg(feature = "blake2")]
             Self::Blake2S224(_) => "Blake2S224(..)",
+            #[cfg(feature = "blake2")]
             Self::Blake2S256(_) => "Blake2S256(..)",
+            #[cfg(feature = "blake3")]
             Self::Blake3(_) => "Blake3(..)",
+            #[cfg(feature = "md5")]
             Self::Md5(_) => "Md5(..)",
+            #[cfg(feature = "ripemd")]
             Self::Ripemd128(_) => "Ripemd128(..)",
+            #[cfg(feature = "ripemd")]
             Self::Ripemd160(_) => "Ripemd160(..)",
+            #[cfg(feature = "ripemd")]
             Self::Ripemd256(_) => "Ripemd256(..)",
+            #[cfg(feature = "ripemd")]
             Self::Ripemd320(_) => "Ripemd320(..)",
+            #[cfg(feature = "sha1")]
             Self::Sha1(_) => "Sha1(..)",
+            #[cfg(feature = "sha2")]
             Self::Sha2224(_) => "Sha2224(..)",
+            #[cfg(feature = "sha2")]
             Self::Sha2256(_) => "Sha2256(..)",
+            #[cfg(feature = "sha2")]
             Self::Sha2384(_) => "Sha2384(..)",
+            #[cfg(feature = "sha2")]
             Self::Sha2512(_) => "Sha2512(..)",
+            #[cfg(feature = "sha2")]
             Self::Sha2512224(_) => "Sha2512224(..)",
+            #[cfg(feature = "sha2")]
             Self::Sha2512256(_) => "Sha2512256(..)",
+            #[cfg(feature = "sha3")]
             Self::Sha3224(_) => "Sha3224(..)",
+            #[cfg(feature = "sha3")]
             Self::Sha3256(_) => "Sha3256(..)",
+            #[cfg(feature = "sha3")]
             Self::Sha3384(_) => "Sha3384(..)",
+            #[cfg(feature = "sha3")]
             Self::Sha3512(_) => "Sha3512(..)",
+            #[cfg(feature = "shake")]
             Self::Shake128(_) => "Shake128(..)",
+            #[cfg(feature = "shake")]
             Self::Shake256(_) => "Shake256(..)",
         };
         f.write_str(name)
+    }
+}
+
+/// the streaming hasher state when no hash family feature is enabled
+///
+/// No hasher can exist, so [`Builder::update`] has nothing to feed and a
+/// streamed build fails with `Error::UnsupportedHash`.
+#[cfg(not(any(
+    feature = "blake2",
+    feature = "blake3",
+    feature = "md5",
+    feature = "ripemd",
+    feature = "sha1",
+    feature = "sha2",
+    feature = "sha3",
+    feature = "shake"
+)))]
+#[derive(Clone, Debug)]
+struct Hasher(core::convert::Infallible);
+
+#[cfg(not(any(
+    feature = "blake2",
+    feature = "blake3",
+    feature = "md5",
+    feature = "ripemd",
+    feature = "sha1",
+    feature = "sha2",
+    feature = "sha3",
+    feature = "shake"
+)))]
+impl Hasher {
+    /// no hash family is compiled in, so no codec has a hasher
+    const fn new(_codec: Codec) -> Option<Self> {
+        None
+    }
+
+    /// unreachable: no `Hasher` value can exist
+    const fn update(&self, _data: &[u8]) {
+        match self.0 {}
+    }
+
+    /// unreachable: no `Hasher` value can exist
+    const fn finalize(self, _out_len: usize) -> Vec<u8> {
+        match self.0 {}
     }
 }
 
@@ -527,6 +733,13 @@ impl EncodingInfo for Multihash {
 
 impl From<Multihash> for Vec<u8> {
     fn from(mh: Multihash) -> Self {
+        Self::from(&mh)
+    }
+}
+
+/// Encode a borrowed multihash without cloning it
+impl From<&Multihash> for Vec<u8> {
+    fn from(mh: &Multihash) -> Self {
         // Pre-calculate total size: codec varint + length varint + hash bytes
         let codec_bytes: Self = mh.codec.into();
         let len_bytes = mh.hash.len().encode_into();
@@ -633,6 +846,7 @@ impl fmt::Debug for Multihash {
 /// # Examples
 ///
 /// ```
+/// # #[cfg(feature = "sha2")] {
 /// use multi_hash::Builder;
 /// use multi_codec::Codec;
 ///
@@ -642,6 +856,7 @@ impl fmt::Debug for Multihash {
 /// let multihash = builder.try_build().unwrap();
 ///
 /// assert_eq!(multihash.as_ref().len(), 32);
+/// # }
 /// ```
 #[derive(Clone, Debug)]
 pub struct Builder {
@@ -700,6 +915,7 @@ impl Builder {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "sha2")] {
     /// use multi_hash::Builder;
     /// use multi_codec::Codec;
     ///
@@ -709,17 +925,14 @@ impl Builder {
     /// let multihash = builder.try_build().unwrap();
     ///
     /// assert_eq!(multihash.as_ref().len(), 32);
+    /// # }
     /// ```
     pub fn update(&mut self, data: impl AsRef<[u8]>) {
-        // `Builder::new` accepts only codecs in `HASH_CODECS`, for which
-        // `Hasher::new` always produces a hasher
+        // a codec whose hash family feature is disabled has no hasher; the
+        // data is dropped and `try_build` reports `UnsupportedHash`
         if self.hasher.is_none() {
             self.hasher = Hasher::new(self.codec);
         }
-        debug_assert!(
-            self.hasher.is_some(),
-            "Hasher::new must cover every codec in HASH_CODECS"
-        );
         if let Some(hasher) = &mut self.hasher {
             hasher.update(data.as_ref());
         }
@@ -738,6 +951,7 @@ impl Builder {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "blake3")] {
     /// use multi_hash::Builder;
     /// use multi_codec::Codec;
     ///
@@ -747,6 +961,7 @@ impl Builder {
     /// let multihash = builder.try_build().unwrap();
     ///
     /// assert_eq!(multihash.as_ref().len(), 32);
+    /// # }
     /// ```
     ///
     /// # XOF notes
@@ -842,8 +1057,9 @@ impl Builder {
 /// finish hash state into a validated multihash
 ///
 /// An explicit digest takes precedence over the streaming hasher. A missing
-/// digest fails with `Error::MissingHash`. The digest then runs through the
-/// codec's output policy.
+/// digest fails with `Error::MissingHash`, or with `Error::UnsupportedHash`
+/// when the codec's hash family feature is disabled. The digest then runs
+/// through the codec's output policy.
 fn build_multihash(
     codec: Codec,
     hasher: Option<Hasher>,
@@ -853,7 +1069,16 @@ fn build_multihash(
     let hash = match hash {
         Some(hash) => hash,
         None => match hasher {
-            Some(hasher) => hasher.finalize(codec, output_len)?,
+            Some(hasher) => {
+                // the XOF length is checked before any allocation or squeeze
+                let out_len = match output_policy(codec) {
+                    Some(OutputPolicy::Fixed(len)) => len,
+                    Some(OutputPolicy::Xof) => validate_output_len(codec, output_len)?,
+                    None => return Err(Error::unsupported_hash(codec)),
+                };
+                hasher.finalize(out_len)
+            }
+            None if Hasher::new(codec).is_none() => return Err(Error::unsupported_hash(codec)),
             None => return Err(Error::MissingHash),
         },
     };
@@ -869,6 +1094,7 @@ mod tests {
     ///
     /// Fixed-output codecs ignore an output length, so the helper applies
     /// only to the XOF arms, `Blake3`, `Shake128`, and `Shake256`.
+    #[cfg(any(feature = "sha1", feature = "sha2", feature = "sha3"))]
     fn xof_output_len(codec: Codec) -> Option<usize> {
         match codec {
             Codec::Blake3 | Codec::Shake128 => Some(32),
@@ -878,6 +1104,7 @@ mod tests {
     }
 
     /// build a multihash of `data` with `codec`, streaming the data
+    #[cfg(any(feature = "sha2", feature = "sha3"))]
     fn streamed_multihash(codec: Codec, data: &[u8]) -> Multihash {
         let mut builder = Builder::new(codec).unwrap();
         builder.update(data);
@@ -888,6 +1115,7 @@ mod tests {
     }
 
     /// build a base encoded multihash of `data` with `codec`
+    #[cfg(any(feature = "sha1", feature = "sha2", feature = "sha3"))]
     fn streamed_encoded(codec: Codec, base: Base, data: &[u8]) -> EncodedMultihash {
         let mut builder = Builder::new(codec).unwrap();
         builder.update(data);
@@ -900,6 +1128,16 @@ mod tests {
             .unwrap()
     }
 
+    #[cfg(all(
+        feature = "blake2",
+        feature = "blake3",
+        feature = "md5",
+        feature = "ripemd",
+        feature = "sha1",
+        feature = "sha2",
+        feature = "sha3",
+        feature = "shake"
+    ))]
     #[test]
     fn test_matrix() {
         let hashers = vec![
@@ -964,6 +1202,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "sha3")]
     #[test]
     fn test_binary_roundtrip() {
         let mh1 = streamed_multihash(Codec::Sha3384, b"for great justice, move every zig!");
@@ -972,6 +1211,7 @@ mod tests {
         assert_eq!(mh1, mh2);
     }
 
+    #[cfg(feature = "sha3")]
     #[test]
     fn test_encoded() {
         let mh = streamed_encoded(
@@ -985,6 +1225,7 @@ mod tests {
         assert_eq!(mh, EncodedMultihash::try_from(s.as_str()).unwrap());
     }
 
+    #[cfg(feature = "sha3")]
     #[test]
     fn test_matching() {
         let mh1 = streamed_multihash(Codec::Sha3256, b"for great justice, move every zig!");
@@ -1006,6 +1247,7 @@ mod tests {
         assert!(mh2.is_null());
     }
 
+    #[cfg(feature = "sha1")]
     #[test]
     fn test_multihash_sha1() {
         // test cases from: https://github.com/multiformats/multihash?tab=readme-ov-file#example
@@ -1026,6 +1268,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_multihash_sha2_256() {
         // test cases from: https://github.com/multiformats/multihash?tab=readme-ov-file#example
@@ -1055,6 +1298,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_multihash_in_indexmap() {
         let mut map = std::collections::HashMap::new();
@@ -1069,6 +1313,7 @@ mod tests {
         assert_eq!(map.len(), 2);
     }
 
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_ct_eq_equal() {
         let mh1 = streamed_multihash(Codec::Sha2256, b"hello");
@@ -1077,6 +1322,7 @@ mod tests {
         assert_eq!(mh1.ct_eq(&mh2).unwrap_u8(), 1);
     }
 
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_ct_eq_unequal_hash() {
         let mh1 = streamed_multihash(Codec::Sha2256, b"hello");
@@ -1085,6 +1331,7 @@ mod tests {
         assert_eq!(mh1.ct_eq(&mh2).unwrap_u8(), 0);
     }
 
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_ct_eq_unequal_codec() {
         let mh1 = streamed_multihash(Codec::Sha2256, b"hello");
@@ -1099,6 +1346,7 @@ mod tests {
         assert_eq!(mh1.ct_eq(&mh3).unwrap_u8(), 0);
     }
 
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_ct_eq_unequal_length() {
         let mh1 = streamed_multihash(Codec::Sha2256, b"hello");
@@ -1125,6 +1373,7 @@ mod tests {
 
     /// a builder without streamed data and without an explicit digest fails
     /// at build time
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_builder_missing_hash_state() {
         let result = Builder::new(Codec::Sha2256).unwrap().try_build();
@@ -1132,6 +1381,7 @@ mod tests {
     }
 
     /// streaming feeds data through the lazy hasher
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_builder_update_streaming() {
         let mut builder = Builder::new(Codec::Sha2256).unwrap();
@@ -1148,6 +1398,7 @@ mod tests {
     }
 
     /// streaming in chunks equals hashing the whole input at once
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_builder_update_chunks_match_whole() {
         let data = b"for great justice, move every zig!";
@@ -1214,7 +1465,36 @@ mod tests {
         }
     }
 
+    /// streaming a codec whose hash family feature is disabled fails with
+    /// `UnsupportedHash`, while an explicit digest still builds
+    #[cfg(not(feature = "md5"))]
+    #[test]
+    fn test_builder_disabled_codec() {
+        let mut builder = Builder::new(Codec::Md5).unwrap();
+        builder.update(b"no md5 hasher");
+        let result = builder.try_build();
+        assert!(
+            matches!(result, Err(Error::UnsupportedHash { codec }) if codec == Codec::Md5),
+            "streamed build: {result:?}"
+        );
+
+        let result = Builder::new(Codec::Md5).unwrap().try_build();
+        assert!(
+            matches!(result, Err(Error::UnsupportedHash { .. })),
+            "empty build: {result:?}"
+        );
+
+        let mh = Builder::new(Codec::Md5)
+            .unwrap()
+            .with_hash(vec![5u8; 16])
+            .try_build()
+            .unwrap();
+        assert_eq!(mh.codec(), Codec::Md5);
+        assert_eq!(mh.as_ref(), [5u8; 16].as_slice());
+    }
+
     /// a digest set with `with_hash` takes precedence over streamed data
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_with_hash_precedence() {
         let mut builder = Builder::new(Codec::Sha2256).unwrap();
@@ -1225,6 +1505,7 @@ mod tests {
     }
 
     /// a wrong-length explicit digest fails even with valid streamed data
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_with_hash_precedence_validates_length() {
         let mut builder = Builder::new(Codec::Sha2256).unwrap();
@@ -1235,6 +1516,16 @@ mod tests {
 
     /// every codec streams to its output policy length, and an explicit
     /// digest of that length is accepted
+    #[cfg(all(
+        feature = "blake2",
+        feature = "blake3",
+        feature = "md5",
+        feature = "ripemd",
+        feature = "sha1",
+        feature = "sha2",
+        feature = "sha3",
+        feature = "shake"
+    ))]
     #[test]
     fn test_builder_stream_policy_lengths() {
         for &codec in &HASH_CODECS {
@@ -1273,6 +1564,7 @@ mod tests {
     }
 
     /// `try_build` consumes the builder; a clone keeps building independently
+    #[cfg(all(feature = "blake3", feature = "sha2", feature = "sha3"))]
     #[test]
     fn test_try_build_consumes_builder() {
         for &codec in &[Codec::Sha2256, Codec::Blake3, Codec::Sha3384] {
@@ -1289,6 +1581,7 @@ mod tests {
     }
 
     /// `try_build_encoded` consumes the builder too
+    #[cfg(feature = "sha3")]
     #[test]
     fn test_try_build_encoded_consumes_builder() {
         let mut builder = Builder::new(Codec::Sha3256).unwrap();
@@ -1303,6 +1596,7 @@ mod tests {
 
     /// a builder with live hashing state stays `Send`, `Sync`, `Clone`, and
     /// `Debug`, and its cloned state builds the same digest
+    #[cfg(feature = "sha3")]
     #[test]
     fn test_builder_send_sync_streaming() {
         fn assert_send<T: Send>() {}
@@ -1328,6 +1622,7 @@ mod tests {
 
     /// builder debug output names the codec and the active hasher without
     /// exposing hash state
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_builder_debug() {
         let mut builder = Builder::new(Codec::Sha2256).unwrap();
@@ -1372,6 +1667,7 @@ mod tests {
 
     /// a streamed XOF build without an output length fails with
     /// `OutputLenRequired`
+    #[cfg(all(feature = "blake3", feature = "shake"))]
     #[test]
     fn test_xof_output_len_required() {
         for &codec in &[Codec::Blake3, Codec::Shake128, Codec::Shake256] {
@@ -1395,6 +1691,7 @@ mod tests {
 
     /// a zero or over-limit XOF output length fails with `OutputLenInvalid`
     /// before any allocation or squeeze
+    #[cfg(all(feature = "blake3", feature = "shake"))]
     #[test]
     fn test_xof_output_len_invalid() {
         for &codec in &[Codec::Blake3, Codec::Shake128, Codec::Shake256] {
@@ -1419,6 +1716,7 @@ mod tests {
     }
 
     /// the minimum XOF output length of one byte builds
+    #[cfg(all(feature = "blake3", feature = "shake"))]
     #[test]
     fn test_xof_output_len_minimum() {
         for &codec in &[Codec::Blake3, Codec::Shake128, Codec::Shake256] {
@@ -1432,6 +1730,7 @@ mod tests {
     }
 
     /// fixed-output codecs ignore an `output_len` setting
+    #[cfg(feature = "sha2")]
     #[test]
     fn test_fixed_output_ignores_output_len() {
         for &output_len in &[0, 33, MAX_HASH_LENGTH + 1] {
@@ -1453,6 +1752,7 @@ mod tests {
     /// XOF prefix consistency: a short streamed digest prefixes the long
     /// digest of the same input, while the two multihashes still encode
     /// differently
+    #[cfg(all(feature = "blake3", feature = "shake"))]
     #[test]
     fn test_xof_prefix_consistency() {
         for (codec, short_len) in [
@@ -1480,8 +1780,8 @@ mod tests {
                 "codec {codec:?}: short digest is not a prefix of long digest"
             );
 
-            let short_bytes: Vec<u8> = short.clone().into();
-            let long_bytes: Vec<u8> = long.clone().into();
+            let short_bytes: Vec<u8> = short.into();
+            let long_bytes: Vec<u8> = long.into();
             assert_ne!(
                 short_bytes, long_bytes,
                 "codec {codec:?}: digest encodings matched across lengths"
@@ -1491,6 +1791,7 @@ mod tests {
 
     /// a builder streaming an XOF stays `Send` and `Sync`, and the digest
     /// built across a thread matches the one-shot digest
+    #[cfg(feature = "shake")]
     #[test]
     fn test_xof_send_sync_streaming() {
         fn assert_send<T: Send>() {}
@@ -1519,6 +1820,7 @@ mod tests {
     /// an explicit XOF digest inside the `1..=MAX_HASH_LENGTH` policy
     /// builds, and the digest takes precedence over an `output_len`
     /// setting
+    #[cfg(feature = "shake")]
     #[test]
     fn test_xof_with_hash_policy() {
         let hash = vec![3u8; 8];

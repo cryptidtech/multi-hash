@@ -17,6 +17,7 @@ Multihash is a self-describing format. It pairs a hash algorithm identifier (a m
 
 - [Features](#features)
 - [Install](#install)
+- [Upgrading from 2.x](#upgrading-from-2x)
 - [Supported Algorithms](#supported-algorithms)
 - [Usage](#usage)
   - [Computing a Hash](#computing-a-hash)
@@ -37,11 +38,11 @@ Multihash is a self-describing format. It pairs a hash algorithm identifier (a m
 
 ## Features
 
-- 25 hash algorithms. SHA1, SHA2 family, SHA3 family, Blake2, Blake3, MD5, RIPEMD. `Blake3`, `Shake128`, and `Shake256` are extendable-output functions (XOF) with a caller-chosen digest length.
+- 25 hash algorithms. SHA1, SHA2 family, SHA3 family, Blake2, Blake3, MD5, RIPEMD, each family behind its own [feature](#feature-flags). `Blake3`, `Shake128`, and `Shake256` are extendable-output functions (XOF) with a caller-chosen digest length.
 - Builder pattern. A fluent API to create multihashes from raw data or existing digests.
 - Multibase encoding. The `EncodedMultihash` smart pointer gives a base-encoded string representation via `BaseEncoded` from `multi-util`.
 - Serde support. JSON gives the codec name string. Binary gives the varint bytes. The `serde` feature gates it.
-- Binary round-trip. `Into<Vec<u8>>` and `TryFrom<&[u8]>` for the raw wire format.
+- Binary round-trip. `From<&Multihash>` and `From<Multihash>` for `Vec<u8>`, and `TryFrom<&[u8]>`, for the raw wire format. Encoding by reference does not clone the multihash.
 - Type-safe newtypes. `HashDigest` and `AlgorithmId` wrappers.
 - Zero unsafe code. `#![deny(unsafe_code)]` is set at the crate root.
 - Thread-safe. All types are `Send + Sync`.
@@ -52,17 +53,27 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-multi-hash = "2.0"
+multi-hash = "3.0"
 ```
 
-To disable serde support:
+To pick only the hash families you need, turn off the defaults and list them (see [Feature Flags](#feature-flags)):
 
 ```toml
 [dependencies]
-multi-hash = { version = "2.0", default-features = false }
+multi-hash = { version = "3.0", default-features = false, features = ["sha2", "sha3"] }
 ```
 
 MSRV: Rust 1.99 (Edition 2024).
+
+## Upgrading from 2.x
+
+3.0 puts each hash family behind its own feature. The default build has every family on, so `multi-hash = "3.0"` behaves as 2.x did.
+
+- If you used `default-features = false` only to drop serde, add back the families you hash with, e.g. `features = ["sha2", "blake3"]`. Without them, `try_build` returns `Error::UnsupportedHash` for a streamed codec, where 2.x returned the digest.
+- `Builder::with_hash` and decoding work for every codec in any build, so a crate that only wraps or parses digests can drop all hash crates.
+- Encode by reference with `Vec::<u8>::from(&mh)` to avoid cloning. The owned `From<Multihash>` still works.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list.
 
 ## Supported Algorithms
 
@@ -193,8 +204,8 @@ let mut builder = Builder::new(Codec::Sha2256).unwrap();
 builder.update(b"data");
 let mh1 = builder.try_build().unwrap();
 
-// Encode to binary (varint wire format)
-let bytes: Vec<u8> = mh1.clone().into();
+// Encode to binary (varint wire format); by reference, so mh1 is not cloned
+let bytes: Vec<u8> = (&mh1).into();
 
 // Decode from binary
 let mh2 = Multihash::try_from(bytes.as_ref()).unwrap();
@@ -393,6 +404,21 @@ CI collects coverage with `cargo-llvm-cov` and uploads the result to Codecov.
 
 ## Feature Flags
 
+Each hash family is its own feature, and all of them are on by default:
+
+| Feature | Codecs | Crate |
+|---|---|---|
+| `blake2` | `Blake2B224`, `Blake2B256`, `Blake2B384`, `Blake2B512`, `Blake2S224`, `Blake2S256` | `blake2` |
+| `blake3` | `Blake3` (XOF) | `blake3` |
+| `md5` | `Md5` | `md-5` |
+| `ripemd` | `Ripemd128`, `Ripemd160`, `Ripemd256`, `Ripemd320` | `ripemd` |
+| `sha1` | `Sha1` | `sha1` |
+| `sha2` | `Sha2224`, `Sha2256`, `Sha2384`, `Sha2512`, `Sha2512224`, `Sha2512256` | `sha2` |
+| `sha3` | `Sha3224`, `Sha3256`, `Sha3384`, `Sha3512` | `sha3` |
+| `shake` | `Shake128`, `Shake256` (XOF) | `shake` |
+
+A family feature is only needed to compute a digest. With `default-features = false` and no family enabled, the crate still provides the `Multihash` type, its binary and multibase encoding, the codec lists and output-length checks, and `Builder::with_hash` for digests computed elsewhere. Streaming data with `Builder::update` into a codec whose family is off makes `try_build` return `Error::UnsupportedHash`.
+
 - `serde` (default). Enables serde serialization and deserialization. When on, `Multihash` implements `Serialize` and `Deserialize`. Human-readable formats give the codec name and the hex digest. Binary formats give the varint bytes.
 - `fips` (additive, off by default). Exports `FIPS_CODECS` (13 codecs) and `SAFE_FIPS_CODECS` (8 codecs). They list the NIST FIPS approved hash algorithms. `SAFE_FIPS_CODECS` omits SHA-1 and the 224-bit algorithms that SP 800-131A restricts. `Blake2`, `Blake3`, `Md5`, and the RIPEMD codecs are not FIPS approved. SHA-1 is verification-only under NIST SP 800-131A Rev. 2. The SP 800-131A Rev. 3 draft deprecates SHA-1 and the 224-bit hashes through 2030 and disallows them after 2030.
 
@@ -400,14 +426,16 @@ The `fips` feature composes with the default `serde` feature:
 
 ```toml
 [dependencies]
-multi-hash = { version = "2.0", features = ["fips"] }
+multi-hash = { version = "3.0", features = ["fips"] }
 ```
 
 ### Disabling Default Features
 
+This build has no hash crates and no serde; it decodes, encodes, and wraps existing digests only:
+
 ```toml
 [dependencies]
-multi-hash = { version = "2.0", default-features = false }
+multi-hash = { version = "3.0", default-features = false }
 ```
 
 ## Security

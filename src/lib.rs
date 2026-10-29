@@ -43,6 +43,7 @@
 //! ### Computing a Hash
 //!
 //! ```rust
+//! # #[cfg(feature = "sha2")] {
 //! use multi_hash::Builder;
 //! use multi_codec::Codec;
 //! use multi_util::CodecInfo;
@@ -54,6 +55,7 @@
 //!
 //! assert_eq!(multihash.codec(), Codec::Sha2256);
 //! assert_eq!(multihash.as_ref().len(), 32); // SHA2-256 outputs 32 bytes
+//! # }
 //! ```
 //!
 //! ### Computing a SHAKE256 Digest of a Chosen Length
@@ -63,6 +65,7 @@
 //! [`Builder::output_len`] before `try_build`:
 //!
 //! ```rust
+//! # #[cfg(feature = "shake")] {
 //! use multi_hash::Builder;
 //! use multi_codec::Codec;
 //! use multi_util::CodecInfo;
@@ -74,6 +77,7 @@
 //!
 //! assert_eq!(multihash.codec(), Codec::Shake256);
 //! assert_eq!(multihash.as_ref().len(), 64);
+//! # }
 //! ```
 //!
 //! ### Creating from Existing Hash
@@ -94,6 +98,7 @@
 //! ### Encoding and Decoding
 //!
 //! ```rust
+//! # #[cfg(feature = "sha2")] {
 //! use multi_hash::{Builder, Multihash};
 //! use multi_codec::Codec;
 //!
@@ -107,11 +112,13 @@
 //! // Decode from bytes
 //! let mh2 = Multihash::try_from(bytes.as_ref()).unwrap();
 //! assert_eq!(mh1, mh2);
+//! # }
 //! ```
 //!
 //! ### Base Encoding
 //!
 //! ```rust
+//! # #[cfg(feature = "sha2")] {
 //! use multi_hash::Builder;
 //! use multi_codec::Codec;
 //! use multi_base::Base;
@@ -127,6 +134,7 @@
 //! // Display as base58-encoded string
 //! let base58_string = encoded.to_string();
 //! println!("Multihash: {}", base58_string);
+//! # }
 //! ```
 //!
 //! ## Type Safety
@@ -187,6 +195,7 @@
 //! All types are `Send + Sync` and safe for concurrent use:
 //!
 //! ```rust
+//! # #[cfg(feature = "sha2")] {
 //! use std::sync::Arc;
 //! use std::thread;
 //! use multi_hash::Builder;
@@ -201,6 +210,7 @@
 //! });
 //!
 //! handle.join().unwrap();
+//! # }
 //! ```
 //!
 //! ## Performance
@@ -237,16 +247,23 @@
 //!
 //! ## Features
 //!
+//! Each hash family is its own feature, all enabled by default: `blake2`,
+//! `blake3`, `md5`, `ripemd`, `sha1`, `sha2`, `sha3`, and `shake`. A family
+//! feature is only needed to compute a digest. With `default-features =
+//! false` the crate provides the [`Multihash`] type, its encoding, and
+//! [`Builder::with_hash`] for digests computed elsewhere; streaming into a
+//! codec whose family is disabled fails with `Error::UnsupportedHash`.
+//!
 //! - **`serde`** (default): Enables serde serialization support
 //! - **`fips`**: Exports the `FIPS_CODECS` and `SAFE_FIPS_CODECS`
 //!   constants. They list the hash algorithms on the NIST FIPS approved
 //!   lists. `SAFE_FIPS_CODECS` omits SHA-1 and the 224-bit algorithms that
 //!   SP 800-131A restricts.
 //!
-//! To disable serde:
+//! To select hash families, disable the defaults and list them:
 //! ```toml
 //! [dependencies]
-//! multi-hash = { version = "2.0", default-features = false }
+//! multi-hash = { version = "3.0", default-features = false, features = ["sha2", "sha3"] }
 //! ```
 
 #![warn(missing_docs)]
@@ -282,6 +299,7 @@ pub mod serde;
 /// Commonly used items
 ///
 /// ```
+/// # #[cfg(feature = "sha2")] {
 /// use multi_hash::prelude::*;
 ///
 /// let mut builder = Builder::new(Codec::Sha2256).unwrap();
@@ -289,6 +307,7 @@ pub mod serde;
 /// let mh = builder.try_build().unwrap();
 /// // CodecInfo trait is in prelude
 /// assert_eq!(mh.codec(), Codec::Sha2256);
+/// # }
 /// ```
 pub mod prelude {
     pub use super::*;

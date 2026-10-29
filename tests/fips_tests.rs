@@ -7,7 +7,17 @@
 //! keep them contained in the general codec lists, and build a multihash
 //! for every approved codec through the builder, checking the digests
 //! of a sample against independently generated known-answer values.
-#![cfg(feature = "fips")]
+#![cfg(all(
+    feature = "fips",
+    feature = "blake2",
+    feature = "blake3",
+    feature = "md5",
+    feature = "ripemd",
+    feature = "sha1",
+    feature = "sha2",
+    feature = "sha3",
+    feature = "shake"
+))]
 
 use multi_codec::Codec;
 use multi_hash::{Builder, FIPS_CODECS, HASH_CODECS, Multihash, SAFE_FIPS_CODECS};
