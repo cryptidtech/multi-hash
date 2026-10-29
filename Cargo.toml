@@ -1,6 +1,6 @@
 [package]
 name = "multi-hash"
-version = "2.0.1"
+version = "4.0.0"
 edition = "2024"
 rust-version = "1.99"
 authors = ["Dave Grantham <dwg@linuxprogrammer.org>"]
@@ -21,9 +21,9 @@ fips = []
 blake2 = "0.11.0"
 blake3 = { version = "1.8", features = ["traits-preview", "zeroize"] }
 multi-base = "1.1"
-multi-codec = "1.6"
+multi-codec = "2.0"
 multi-trait = "1.1"
-multi-util = "1.2"
+multi-util = "2.0"
 digest = { version = "0.11", features = ["alloc"] }
 hex = "0.4"
 md-5 = "0.11"
@@ -62,3 +62,10 @@ unsafe_code = "deny"
 name = "multihash_bench"
 harness = false
 path = "benches/multihash_bench.rs"
+
+# Temporary path patch: multi-util 2.0.0 (multi-codec 2.0.0 graph) is not on
+# crates.io yet. Remove this section before `cargo publish` — cargo rejects
+# publishing a manifest with a [patch] section, and the published multi-util
+# 2.0.0 then satisfies the requirement directly.
+[patch.crates-io]
+multi-util = { path = "../multi-util" }
